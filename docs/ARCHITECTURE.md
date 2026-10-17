@@ -1,5 +1,11 @@
 # Arquitetura do sistema
 
+## Versão implementada hoje
+
+O primeiro fluxo é um dashboard React, uma API FastAPI com login de administrador e um adaptador para a API oficial de Web Analytics da Vercel. A API não grava métricas em banco: consulta `visits` e `events`, calcula totais, comparação entre períodos, páginas populares e insights simples, e entrega a resposta agregada ao dashboard. O portfólio deve ser o projeto Vercel indicado por `VERCEL_PROJECT_ID`.
+
+O tracker próprio, múltiplos usuários/projetos e PostgreSQL descritos nas próximas seções são etapas futuras, não fazem parte do fluxo funcional atual.
+
 ## 1. Estilo arquitetural
 
 Começar com um **monólito modular** no backend e um monorepositório. A separação por módulos permite evoluir serviços de forma independente sem introduzir prematuramente a complexidade operacional de microsserviços.
@@ -7,7 +13,7 @@ Começar com um **monólito modular** no backend e um monorepositório. A separa
 ## 2. Componentes
 
 ### Dashboard — `apps/dashboard`
-React, TypeScript e Vite. Responsável por autenticação visual, gestão de sites, filtros, gráficos e relatórios. O frontend nunca é a autoridade final de autorização.
+React, JSX e Vite. Responsável por autenticação visual, gestão de sites, filtros, gráficos e relatórios. O frontend nunca é a autoridade final de autorização.
 
 ### API — `services/api`
 Python e FastAPI. Responsável por validar entradas, autenticar administradores, aplicar autorização por projeto, receber eventos, aplicar regras de privacidade e disponibilizar relatórios.

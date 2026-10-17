@@ -12,7 +12,7 @@ O roadmap organiza entregas verificáveis. As fases podem mudar conforme testes,
 **Concluído quando:** documentação e ambiente inicial são consistentes e reproduzíveis.
 
 ## M1 — Fundação executável
-- [ ] Criar aplicação React + TypeScript + Vite.
+- [ ] Criar aplicação React + JSX + Vite.
 - [ ] Criar API FastAPI com `GET /health`.
 - [ ] Configurar PostgreSQL local.
 - [ ] Configurar migrações.

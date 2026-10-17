@@ -1,6 +1,16 @@
 # Contrato inicial da API
 
-Todos os endpoints deste documento são planejados; não representam rotas implementadas até que o código e os testes existam.
+As rotas implementadas nesta primeira versão estão listadas abaixo. O restante deste documento descreve a expansão planejada para múltiplos projetos e coleta própria.
+
+## Rotas implementadas
+
+- `GET /health`: estado mínimo da API.
+- `POST /api/v1/auth/login`: valida o administrador configurado e devolve token bearer com validade de 30 minutos.
+- `GET /api/v1/auth/me`: retorna o administrador associado a um token válido.
+- `POST /api/v1/auth/logout`: confirma um token válido e responde `204`; por ser assinado e stateless, o token só deixa de ser aceito ao expirar. A interface atual limpa seu token em memória ao sair.
+- `GET /api/v1/analytics/overview?days=7|30|90`: exige token bearer; consulta a Vercel, compara períodos e retorna totais, tráfego diário, páginas populares, eventos personalizados e insights.
+
+A API não persiste dados analíticos nesta versão. As respostas vêm da API de Web Analytics da Vercel.
 
 ## Convenções
 
@@ -20,10 +30,10 @@ Retorna estado mínimo da aplicação. Não deve expor segredos, configuração 
 ## Autenticação administrativa
 
 - `POST /api/v1/auth/login`: valida credenciais e inicia sessão segura.
-- `POST /api/v1/auth/logout`: encerra/invalida sessão.
+- `POST /api/v1/auth/logout`: responde `204` para uma sessão autenticada.
 - `GET /api/v1/auth/me`: retorna informações mínimas da conta autenticada.
 
-Preferir cookies de sessão com flags Secure, HttpOnly e SameSite adequadas ao cenário, proteção contra CSRF quando aplicável, expiração e rotação. A decisão final deve ser documentada antes da implementação.
+Nesta versão, a sessão usa bearer token assinado com validade curta. O frontend mantém o token apenas em memória. A rota de logout não revoga o token no servidor; ele deixa de valer quando expira.
 
 ## Sites
 
@@ -67,7 +77,7 @@ Esse JSON é um exemplo de contrato, não um formato já validado pelo servidor.
 - `GET /api/v1/sites/{site_id}/analytics/events?from=...&to=...`
 - `GET /api/v1/sites/{site_id}/analytics/opportunities?from=...&to=...`
 
-Todos os endpoints de relatório exigem autenticação e autorização para o site solicitado. Definir schemas de resposta antes de implementar o dashboard.
+Os endpoints de analytics planejados por `site_id` ainda não foram implementados. A rota funcional atual é `GET /api/v1/analytics/overview?days=7|30|90`, autenticada, que consulta o projeto Vercel configurado no backend.
 
 ## Exportação e privacidade
 
