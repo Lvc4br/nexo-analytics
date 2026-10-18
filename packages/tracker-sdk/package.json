@@ -1,0 +1,12 @@
+{
+  "name": "@nexo-analytics/tracker",
+  "version": "0.1.0",
+  "description": "Privacy-minimizing browser tracker for Nexo Analytics",
+  "type": "module",
+  "exports": "./src/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "files": ["src/index.js"],
+  "license": "UNLICENSED"
+}

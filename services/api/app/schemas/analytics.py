@@ -8,6 +8,13 @@ class AnalyticsMetrics(BaseModel):
     visitors: int
     events: int
     pageviews_per_visitor: float
+    pageviews_source: str
+    visitors_source: str
+    nexo_pageviews: int
+    vercel_pageviews: int | None
+    nexo_sessions: int
+    engaged_sessions: int
+    engagement_percent: float
 
 
 class AnalyticsComparison(BaseModel):
@@ -33,6 +40,14 @@ class AnalyticsEvent(BaseModel):
     name: str
     count: int
     visitors: int
+    sessions: int = 0
+    source: str = "vercel"
+
+
+class AnalyticsSources(BaseModel):
+    vercel: str
+    nexo: str
+    vercel_events: str
 
 
 class AnalyticsOverview(BaseModel):
@@ -41,9 +56,11 @@ class AnalyticsOverview(BaseModel):
     period_days: int
     period_start: date
     period_end: date
+    sources: AnalyticsSources
     metrics: AnalyticsMetrics
     comparison: AnalyticsComparison
     traffic: list[TrafficDay]
     popular_pages: list[PopularPage]
     events: list[AnalyticsEvent]
+    vercel_events: list[AnalyticsEvent]
     insights: list[str]

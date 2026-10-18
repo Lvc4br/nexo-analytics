@@ -1,129 +1,55 @@
-# Arquitetura do sistema
+# Arquitetura do Nexo Analytics
 
-## Versão implementada hoje
+## Componentes implementados
 
-O primeiro fluxo é um dashboard React, uma API FastAPI com login de administrador e um adaptador para a API oficial de Web Analytics da Vercel. A API não grava métricas em banco: consulta `visits` e `events`, calcula totais, comparação entre períodos, páginas populares e insights simples, e entrega a resposta agregada ao dashboard. O portfólio deve ser o projeto Vercel indicado por `VERCEL_PROJECT_ID`.
+- **Dashboard** (`apps/dashboard`): React JSX e Vite. Solicita relatórios protegidos ao backend e mostra estado das fontes, métricas e insights.
+- **API** (`services/api`): Python/FastAPI. Autentica o administrador, recebe eventos, persiste a coleta própria, consulta a API Web Analytics da Vercel e calcula o relatório.
+- **Tracker** (`packages/tracker-sdk`): JavaScript ESM sem dependências. Coleta pageviews e interações permitidas no navegador do portfólio.
+- **Banco**: SQLite local para desenvolvimento; PostgreSQL persistente obrigatório em produção.
 
-O tracker próprio, múltiplos usuários/projetos e PostgreSQL descritos nas próximas seções são etapas futuras, não fazem parte do fluxo funcional atual.
+O tracker fica no código do site monitorado e aponta para a API Nexo. Essa separação deixa a coleta própria independente do provedor que hospeda o portfólio. A consulta da Vercel é um adaptador opcional de agregados, não uma dependência do coletor.
 
-## 1. Estilo arquitetural
+## Fluxo de coleta
 
-Começar com um **monólito modular** no backend e um monorepositório. A separação por módulos permite evoluir serviços de forma independente sem introduzir prematuramente a complexidade operacional de microsserviços.
-
-## 2. Componentes
-
-### Dashboard — `apps/dashboard`
-React, JSX e Vite. Responsável por autenticação visual, gestão de sites, filtros, gráficos e relatórios. O frontend nunca é a autoridade final de autorização.
-
-### API — `services/api`
-Python e FastAPI. Responsável por validar entradas, autenticar administradores, aplicar autorização por projeto, receber eventos, aplicar regras de privacidade e disponibilizar relatórios.
-
-### Tracker SDK — `packages/tracker-sdk`
-Biblioteca JavaScript pequena, instalada nos sites monitorados. Envia apenas eventos permitidos e não contém segredos administrativos.
-
-### PostgreSQL
-Armazena usuários, sites, domínios, chaves, eventos, sessões e agregações. Migrações versionadas devem ser usadas para alterar o esquema.
-
-### Infraestrutura — `infra`
-Scripts, Docker e configurações de desenvolvimento e implantação.
-
-## 3. Fluxo de coleta
-
-1. O administrador cria um site.
-2. O backend gera um identificador público e configura os domínios permitidos.
-3. O SDK é instalado no site.
-4. O SDK cria um evento permitido e o envia por HTTPS.
-5. A API valida formato, tamanho, origem quando disponível, projeto, domínio e rate limit.
-6. O serviço de coleta minimiza e normaliza o payload.
-7. O evento é persistido com referência ao projeto.
-8. Consultas autenticadas calculam métricas apenas para projetos autorizados.
-
-O cabeçalho HTTP `Origin` e o identificador público ajudam a filtrar requisições, mas não são segredos e não substituem rate limiting, validação e controles contra abuso.
-
-## 4. Fluxo de relatórios
-
-1. O dashboard solicita um relatório para um `site_id` e período.
-2. A API valida a sessão do usuário.
-3. O serviço de autorização confirma acesso ao projeto.
-4. O serviço de analytics executa consultas parametrizadas e limitadas.
-5. A API devolve dados agregados em um esquema estável.
-6. O dashboard renderiza os resultados.
-
-## 5. Hierarquia planejada
-
-```text
-nexo-analytics/
-├── apps/
-│   └── dashboard/
-│       └── src/
-│           ├── app/
-│           ├── assets/
-│           ├── components/
-│           ├── features/
-│           │   ├── overview/
-│           │   ├── sites/
-│           │   ├── analytics/
-│           │   ├── events/
-│           │   ├── opportunities/
-│           │   └── settings/
-│           ├── hooks/
-│           ├── lib/
-│           ├── styles/
-│           └── types/
-├── services/
-│   └── api/
-│       ├── app/
-│       │   ├── api/v1/endpoints/
-│       │   ├── analytics/
-│       │   ├── core/
-│       │   ├── db/
-│       │   ├── integrations/
-│       │   ├── models/
-│       │   ├── privacy/
-│       │   ├── repositories/
-│       │   ├── schemas/
-│       │   └── services/
-│       ├── migrations/
-│       └── tests/
-├── packages/
-│   └── tracker-sdk/
-│       ├── src/
-│       └── tests/
-├── infra/
-├── docs/
-└── .github/
+```mermaid
+flowchart LR
+    Browser[LV_Portfolio no navegador] -->|eventos minimizados| Collector[POST /api/v1/collect]
+    Collector --> Validate[Validação de origem e payload]
+    Validate --> DB[(SQLite local / PostgreSQL produção)]
+    Dashboard[Dashboard React] -->|Bearer token| API[FastAPI Analytics]
+    API --> DB
+    API -->|se configurada| Vercel[Vercel Web Analytics API]
+    DB --> Analysis[Agregações próprias]
+    Vercel --> Analysis
+    Analysis -->|Vercel é principal; Nexo complementa| Dashboard
 ```
 
-Essa árvore é uma estrutura-alvo. Não é necessário criar todos os diretórios antes de ter código que os utilize.
+1. O tracker cria um `event_id` e mantém um `session_id` aleatório em `sessionStorage`.
+2. Envia `event_name`, `path`, `site_id`, `session_id` e `event_id` por HTTPS.
+3. O coletor confere origem permitida, ID do site e formato, aplica limite local, remove duplicatas e persiste o evento.
+4. A consulta autenticada agrega eventos Nexo para o período escolhido.
+5. Se as credenciais Vercel existirem e a API estiver acessível, o backend usa os pageviews e visitantes diários da Vercel como fonte principal; se a chamada falhar, usa o tracker como fallback.
+6. A resposta mantém eventos customizados Vercel e Nexo em listas separadas. Pageviews não são somados, evitando duplicidade.
 
-## 6. Responsabilidades internas da API
+## Camada própria e métricas
 
-- `api/v1/endpoints/`: adaptadores HTTP.
-- `schemas/`: validação e serialização.
-- `services/`: regras de negócio.
-- `repositories/`: persistência e consultas.
-- `models/`: entidades do banco.
-- `analytics/`: métricas e agregações.
-- `privacy/`: retenção, anonimização e exclusão.
-- `core/`: configuração, autenticação e segurança.
-- `integrations/`: adaptadores de serviços externos.
-- `db/`: sessão, engine e dependências do banco.
+O tracker reconhece pageviews iniciais e transições de `history.pushState`, `history.replaceState` e `popstate`. Eventos profissionais como `resume_open` e `contact_click` são opt-in pelo código do portfólio. O dashboard calcula taxa de engajamento como sessões Nexo com ao menos um evento personalizado dividido por sessões Nexo do período.
 
-Endpoints devem permanecer finos; regras de negócio não devem ser duplicadas entre rotas.
+As sessões são uma estimativa baseada em armazenamento por aba; não são pessoas únicas e não podem ser associadas à agregação Vercel. Uma sessão pode conter mais de uma página; o ID não é persistente entre abas independentes nem identifica uma pessoa.
 
-## 7. Escalabilidade
+## Falha e portabilidade
 
-Começar com consultas indexadas e agregações SQL. Só adicionar fila, worker assíncrono, cache ou particionamento quando volume medido justificar. Registrar métricas de latência, falhas de ingestão e tamanho das tabelas antes de otimizar.
+- Sem configuração Vercel: relatório responde com dados Nexo, inclusive vazio enquanto nenhum evento chegar.
+- Erro da API Vercel: o backend mantém relatório disponível com dados Nexo e informa estado da fonte.
+- Portfólio hospedado em outro provedor: mantenha o endpoint Nexo e acrescente a origem nova a `PORTFOLIO_ALLOWED_ORIGINS`.
+- API Nexo em produção: use PostgreSQL, pois sistemas serverless não oferecem disco local durável.
 
-## 8. Integrações com terceiros
+Os dados agregados da Vercel não são importados automaticamente para o banco Nexo. Se a Vercel for desconectada, históricos próprios do Nexo continuam disponíveis enquanto não expirarem.
 
-A integração com serviços externos deve usar APIs oficiais, respeitar planos e permissões e documentar limites. Métricas agregadas de uma plataforma não devem ser apresentadas como dados individuais próprios, nem associadas a visitantes sem uma forma legítima e tecnicamente suportada de associação.
+## Limites operacionais desta versão
 
-## 9. Decisões pendentes
-
-- Versões exatas de Node.js e Python.
-- ORM e biblioteca de migrações.
-- Estratégia final de sessão/autenticação.
-- Provedor de hospedagem.
-- Política de retenção e limiares de agregação.
-- Necessidade de filas com base no volume real.
+- Um site de portfólio configurado por `PORTFOLIO_SITE_ID`.
+- Um administrador configurado por ambiente.
+- O limite de eventos em memória é local a um processo; produção distribuída precisa de limitação compartilhada no gateway.
+- O schema é inicializado com `create_all`; alterações futuras que exigirem migração devem adicionar ferramenta de migrations antes de evolução incompatível.
+- Não há geolocalização, identificação de empresas, visitantes individuais ou rastreamento de conteúdo de página.

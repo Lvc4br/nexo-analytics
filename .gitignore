@@ -43,5 +43,7 @@ Thumbs.db
 # Local databases, exports and backups
 *.sqlite3
 *.db
+.data/
+services/api/.data/
 backups/
 exports/

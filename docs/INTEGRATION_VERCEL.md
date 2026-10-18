@@ -1,77 +1,45 @@
-# Integração do portfólio com a Vercel
+# Integração com a Vercel
 
-Esta versão usa os dados agregados do Web Analytics do projeto Vercel que hospeda o portfólio. O dashboard não consulta o navegador do visitante: o backend Python conversa com a API da Vercel e entrega ao frontend apenas os totais e agregações.
+A Vercel é uma das fontes do Nexo, não o coletor exclusivo. O backend Python consulta os agregados oficiais da Vercel. O tracker próprio envia eventos do `LV_Portfolio` diretamente para a API Nexo, permitindo medições complementares e portabilidade para outra hospedagem. Para adicionar o tracker ao outro repositório, siga [docs/INTEGRATION_TRACKER.md](./INTEGRATION_TRACKER.md).
 
-## 1. Habilitar Web Analytics
+## Ativar Web Analytics
 
-No projeto do portfólio na Vercel, abra **Analytics** e habilite **Web Analytics**. Confirme que o site está implantado e que o script/componente `@vercel/analytics` está carregado em produção. A integração automática de páginas precisa ter dados recebidos pela Vercel.
+No projeto do portfólio na Vercel, habilite Web Analytics e confirme que os deploys de produção estão recebendo dados. A API do Nexo consulta agregados de `visits` e `events`; os valores são fornecidos pela Vercel e não identificam visitas individuais.
 
-O Nexo consulta os recursos `visits` e `events` da API oficial. São dados de produção agregados por período, rota e nome do evento.
+## Credenciais do backend
 
-## 2. Obter as credenciais
+1. Gere um Access Token com permissão para consultar o projeto.
+2. Copie o Project ID em **Settings → General** no projeto Vercel do portfólio.
+3. Para projeto de Team, configure `VERCEL_TEAM_ID` ou `VERCEL_TEAM_SLUG`; projeto pessoal pode deixar ambos vazios.
+4. Na configuração privada da API Nexo, preencha:
 
-1. Gere um Access Token na conta Vercel com permissão para consultar o projeto.
-2. Copie o **Project ID** em **Settings → General** do projeto do portfólio.
-3. Para um projeto de Team, copie também o Team ID ou o slug do Team. Projetos pessoais não precisam dessas variáveis.
-4. No `.env` local, preencha `VERCEL_ACCESS_TOKEN`, `VERCEL_PROJECT_ID` e as variáveis de Team aplicáveis.
+   ```dotenv
+   VERCEL_ACCESS_TOKEN=...
+   VERCEL_PROJECT_ID=prj_...
+   VERCEL_PROJECT_DOMAIN=luca-toniolo.vercel.app
+   ```
 
-Não adicione o token a `VITE_*`, ao código React, ao repositório Git ou ao projeto do portfólio. Ele é usado exclusivamente por `services/api`.
+Nunca adicione o token a `VITE_*`, ao frontend, ao repositório, ou às variáveis do `LV_Portfolio`. Ele pertence apenas à API Nexo.
 
-## 3. Criar o acesso de administrador
+## Como o Nexo combina as fontes
 
-Preencha `DASHBOARD_EMAIL` no `.env`. Dentro de `services/api`, ative o ambiente virtual e execute:
+- Se as consultas Vercel respondem, pageviews e visitantes diários da Vercel são a fonte principal.
+- Se a Vercel não está configurada ou falha, pageviews e sessões Nexo viram fallback.
+- Eventos personalizados enviados diretamente ao Nexo são analisados separadamente dos eventos agregados Vercel.
+- A API nunca soma pageviews Vercel e Nexo para formar uma contagem, porque ambos podem descrever a mesma navegação.
+- Se desativar Web Analytics ou trocar o portfólio de hospedagem, a coleta própria continua enquanto o tracker mantiver a URL da API Nexo.
 
-```powershell
-py -m app.hash_password
-```
+Os dados Vercel têm semântica própria: visitantes são somados por dia e não equivalem a pessoas únicas no intervalo todo. IDs de sessão Nexo não são associados aos agregados Vercel.
 
-Cole o hash produzido em `DASHBOARD_PASSWORD_HASH`. Defina `SESSION_SECRET` com um valor aleatório longo. A sessão expira em 30 minutos e o token não é salvo em `localStorage`.
+## Publicação do Nexo
 
-## 4. Executar localmente
+Painel e API são projetos diferentes se forem hospedados na Vercel. Para o frontend, use `apps/dashboard` como Root Directory e configure `VITE_API_BASE_URL` com a URL da API mais `/api/v1`. Para a API, use `services/api` como Root Directory e configure `APP_ENV=production`, `SESSION_SECRET`, `DASHBOARD_EMAIL`, `DASHBOARD_PASSWORD_HASH`, `CORS_ALLOWED_ORIGINS`, `PORTFOLIO_ALLOWED_ORIGINS` e `DATABASE_URL`.
 
-Em um terminal, na pasta `services/api` e com o ambiente virtual ativado:
+A API exige PostgreSQL persistente em produção, pois disco de função não é banco durável. `CORS_ALLOWED_ORIGINS` permite que o painel chame a API; `PORTFOLIO_ALLOWED_ORIGINS` permite que o site envie eventos ao coletor. Após mudar variáveis, faça um novo deploy. O entrypoint ASGI está em `services/api/index.py`.
 
-```powershell
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+## Referências oficiais
 
-Em outro terminal:
-
-```powershell
-cd apps/dashboard
-npm run dev
-```
-
-Abra `http://localhost:5173` e entre com o e-mail e a senha configurados. A API aparece em `http://127.0.0.1:8000/docs`.
-
-## 5. Publicar
-
-É possível publicar a interface e a API como dois projetos na Vercel:
-
-- Projeto do dashboard: Root Directory `apps/dashboard`; defina `VITE_API_BASE_URL` com a URL pública da API, incluindo `/api/v1`.
-- Projeto da API: Root Directory `services/api`; configure as variáveis Python do `.env` nas Environment Variables da Vercel. Defina `APP_ENV=production`, `CORS_ALLOWED_ORIGINS` com a origem pública do dashboard e use um `SESSION_SECRET` aleatório com pelo menos 32 caracteres.
-
-Após configurar variáveis, faça um novo deploy para que os builds passem a usá-las. A entrada `services/api/index.py` exporta a aplicação ASGI `app` para o runtime Python da Vercel. Consulte também a documentação atual de [FastAPI na Vercel](https://vercel.com/docs/frameworks/backend/fastapi).
-
-## 6. Eventos de interação opcionais
-
-Visitas a páginas são coletadas automaticamente pelo Web Analytics. Eventos como abrir o currículo ou clicar em contato são separados e precisam ser enviados pelo código do portfólio. Com o pacote `@vercel/analytics` instalado, o handler do botão pode chamar:
-
-```tsx
-import { track } from "@vercel/analytics";
-
-track("resume_open");
-track("contact_click", { channel: "email" });
-```
-
-O painel mostra apenas o nome do evento, a quantidade e a contagem agregada de visitantes. Evite enviar e-mail, telefone ou outras informações pessoais como propriedades do evento. A disponibilidade de eventos personalizados depende do plano da Vercel.
-
-## Métricas e limites
-
-- Visualizações de página: agregadas por dia e por rota.
-- Visitantes: somados a partir das contagens diárias da Vercel. A definição de visitante tem validade diária; a soma não significa pessoas únicas em todo o período.
-- Comparação: período escolhido contra os dias imediatamente anteriores.
-- Eventos: somente interações que o portfólio enviar com `track()`.
-- A API não recebe eventos brutos, identificadores de pessoas nem métricas de tempo ativo.
-
-Referências: [Vercel Web Analytics API](https://vercel.com/docs/analytics/web-analytics-api), [contagem de visualizações](https://vercel.com/docs/rest-api/web-analytics/counts-page-views), [agregações de visualizações](https://vercel.com/docs/rest-api/web-analytics/aggregates-page-views), [eventos personalizados](https://vercel.com/docs/analytics/custom-events) e [FastAPI na Vercel](https://vercel.com/docs/frameworks/backend/fastapi).
+- [Vercel Web Analytics API](https://vercel.com/docs/analytics/web-analytics-api)
+- [Project ID nas configurações](https://vercel.com/docs/project-configuration/general-settings)
+- [Web Analytics Quickstart](https://vercel.com/docs/analytics/quickstart)
+- [FastAPI na Vercel](https://vercel.com/docs/frameworks/backend/fastapi)

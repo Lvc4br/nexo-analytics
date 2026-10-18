@@ -1,73 +1,44 @@
-# Privacidade e LGPD — planejamento técnico
+# Privacidade e LGPD
 
-> Este documento é uma base de engenharia e não constitui parecer jurídico. Antes de operar com visitantes reais, avaliar finalidades, bases legais, transparência, contratos, segurança e orientações aplicáveis da ANPD com apoio qualificado quando necessário.
+Este é um documento de engenharia, não aconselhamento jurídico. Antes de operar com visitantes reais, defina finalidade, base legal, transparência, contratos, retenção e atendimento de direitos com avaliação adequada ao contexto.
 
-## Princípios de desenho
+## O que o tracker envia nesta versão
 
-- Finalidade específica e documentada.
-- Adequação e necessidade: coletar somente o necessário.
-- Transparência sobre o que é observado.
-- Segurança durante transmissão, armazenamento, acesso e exclusão.
-- Retenção limitada e descarte verificável.
-- Capacidade de atender solicitações pertinentes dos titulares.
-- Separação de dados entre projetos.
+O navegador envia à API Nexo somente:
 
-## Categorias de dados possíveis
+- nome do evento, como `page_view` ou `contact_click`;
+- caminho da página sem query string e fragmento;
+- ID aleatório de sessão guardado em `sessionStorage`;
+- ID aleatório do evento, usado para deduplicação.
 
-- Eventos de navegação permitidos.
-- Caminho de página normalizado.
-- Horário aproximado do evento.
-- Identificador de sessão e, se justificado, identificador pseudônimo.
-- Categoria de dispositivo, navegador e sistema operacional.
-- Localização aproximada derivada de IP, se necessária e com confiança explicitada.
-- Eventos de interação profissional configurados pelo operador.
+O tracker não envia IP no payload, cabeçalho `Referer`, propriedades livres, conteúdo de formulário, teclas digitadas ou identificador persistente entre sessões. Ele respeita `navigator.doNotTrack === "1"`, pode ser desabilitado pela aplicação e não coleta em localhost sem opção explícita. A Vercel permanece uma fonte separada de dados agregados; os IDs próprios do Nexo não são associados aos visitantes Vercel.
 
-Não coletar por padrão conteúdo de formulário, campos digitados, senhas, dados de pagamento, conteúdo privado, query strings completas ou informações sensíveis.
+O backend armazena IDs pseudônimos de sessão, nome de evento, caminho e horário de recepção em SQLite local ou PostgreSQL de produção. O IP não é salvo pela tabela de eventos, mas o provedor de hospedagem, proxy ou logs operacionais podem processar dados de conexão; avalie também essa camada e seus contratos.
 
-## Endereço IP e geolocalização
+## Minimização e configuração
 
-O endereço IP pode ser dado pessoal dependendo do contexto. Evitar armazenar o IP completo. Se houver necessidade de processá-lo temporariamente para segurança ou geolocalização aproximada, documentar a finalidade, restringir o acesso e descartar o valor bruto conforme prazo definido.
+- Instrumente apenas interações úteis para a finalidade do portfólio.
+- Não coloque identificadores pessoais em nomes de eventos ou caminhos de página.
+- O coletor não aceita propriedades adicionais; futura expansão exige revisão de esquema e privacidade.
+- O tracker não usa fingerprinting ou geolocalização.
+- O limite de 365 dias por padrão é aplicado por limpeza quando a API inicia. Em serviços de longa duração, configure uma rotina/scheduler para executar a limpeza periódica e confirme que o prazo operacional atende à política definida.
+- Não exponha `VERCEL_ACCESS_TOKEN`, credenciais administrativas ou `SESSION_SECRET` em código de navegador.
 
-Geolocalização por IP é aproximada e pode indicar a saída de uma rede, VPN ou provedor, não a localização física exata do visitante. Qualquer regra como “dentro de 80 km de São Paulo” deve ser apresentada como estimativa, com opção de “desconhecido” e sem inferir endereço ou identidade.
+## Sessões e análise
 
-## Identificadores e recorrência
+O `session_id` permite agrupar eventos dentro de uma sessão do navegador. Não prova que todos os eventos vieram da mesma pessoa nem representa necessariamente um único dispositivo físico. A taxa de engajamento é um sinal agregado e descritivo; não identifique visitantes como recrutadores, funcionários de uma empresa ou pessoas específicas.
 
-Um identificador pseudônimo pode ajudar a estimar recorrência dentro das limitações do navegador e das configurações de privacidade. Ele não identifica necessariamente uma pessoa, não garante reconhecimento entre dispositivos e pode ser apagado ou redefinido. Não usar fingerprinting invasivo.
+## Transparência e governança antes da produção
 
-Avaliar a necessidade de consentimento ou outra base legal para identificadores persistentes e tecnologias não essenciais. Oferecer mecanismos de preferência e respeitar a escolha definida pelo projeto.
+O aviso de privacidade do portfólio deve explicar, conforme aplicável, os eventos observados, finalidade, base legal, identificadores e duração, serviços envolvidos, retenção e canais de contato. Avalie cookies/armazenamento de sessão e preferências de consentimento conforme a finalidade e as regras aplicáveis. Defina procedimento para solicitações de titulares e revise contratos e controles dos fornecedores.
 
-## Sinais profissionais
+Checklist de produção:
 
-Abertura de currículo, visita a projetos ou clique em contato podem ser apresentados como eventos ou sinais agregados. Não declarar que um visitante é recrutador, funcionário de determinada empresa ou pessoa específica sem evidência independente legítima. Evitar decisões automatizadas de alto impacto com base nesses sinais.
-
-## Transparência
-
-O aviso de privacidade do site monitorado deve explicar, conforme aplicável:
-- quais eventos são coletados;
-- finalidades e base legal;
-- identificadores utilizados e duração;
-- uso de estimativas geográficas;
-- compartilhamentos e operadores envolvidos;
-- prazos de retenção;
-- canais para exercer direitos e entrar em contato;
-- mecanismos de consentimento e preferências.
-
-## Retenção e exclusão
-
-Definir prazos separados para eventos detalhados, sessões, métricas agregadas, logs de segurança e backups. Criar rotinas idempotentes para expiração e documentar como a exclusão se propaga para dados derivados. Dados agregados podem continuar sendo dados pessoais se ainda permitirem identificação; avaliar caso a caso.
-
-## Direitos e governança
-
-Planejar fluxo para receber, verificar e responder a solicitações pertinentes de acesso, correção, eliminação ou outras aplicáveis. Registrar o mínimo necessário para acompanhar a solicitação. Definir quem controla os dados e quem atua como operador em cada implantação, de acordo com os papéis reais e os contratos.
-
-## Antes de produção
-
-- [ ] Inventário de dados e finalidades.
-- [ ] Bases legais avaliadas.
-- [ ] Aviso de privacidade publicado.
+- [ ] Finalidades e base legal avaliadas.
+- [ ] Aviso de privacidade atualizado.
 - [ ] Consentimento/preferências implementados quando necessários.
-- [ ] Prazos de retenção aprovados e automatizados.
-- [ ] Procedimento de direitos dos titulares.
-- [ ] Contratos e fornecedores avaliados.
-- [ ] Segurança, backups e resposta a incidentes revisados.
-- [ ] Avaliação de riscos documentada.
+- [ ] Retenção e rotina de limpeza configuradas e verificadas.
+- [ ] Origem do dashboard e do portfólio limitadas por configuração.
+- [ ] PostgreSQL com backups, controles de acesso e TLS.
+- [ ] Logs e dados do provedor revisados separadamente da tabela Nexo.
+- [ ] Procedimento de titulares e resposta a incidentes documentados.

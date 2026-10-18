@@ -1,109 +1,58 @@
-# Contrato inicial da API
+# Contrato da API
 
-As rotas implementadas nesta primeira versão estão listadas abaixo. O restante deste documento descreve a expansão planejada para múltiplos projetos e coleta própria.
+Prefixo funcional: `/api/v1`. O backend é FastAPI e usa JSON UTF-8. Em ambientes publicados, a API deve ser acessada por HTTPS.
 
-## Rotas implementadas
+## Rotas
 
-- `GET /health`: estado mínimo da API.
-- `POST /api/v1/auth/login`: valida o administrador configurado e devolve token bearer com validade de 30 minutos.
-- `GET /api/v1/auth/me`: retorna o administrador associado a um token válido.
-- `POST /api/v1/auth/logout`: confirma um token válido e responde `204`; por ser assinado e stateless, o token só deixa de ser aceito ao expirar. A interface atual limpa seu token em memória ao sair.
-- `GET /api/v1/analytics/overview?days=7|30|90`: exige token bearer; consulta a Vercel, compara períodos e retorna totais, tráfego diário, páginas populares, eventos personalizados e insights.
+| Método e rota | Acesso | Função |
+|---|---|---|
+| `GET /health` | Público | Verifica se o processo responde. |
+| `POST /api/v1/auth/login` | Público | Valida as credenciais do administrador e devolve bearer token curto. |
+| `GET /api/v1/auth/me` | Bearer | Retorna o e-mail da sessão autenticada. |
+| `POST /api/v1/auth/logout` | Bearer | Confirma a sessão; a interface apaga o token local. O token assinado expira pelo próprio prazo. |
+| `POST /api/v1/collect` | Público com origem e site validados | Recebe um evento minimizado do tracker. |
+| `GET /api/v1/analytics/overview?days=7\|30\|90` | Bearer | Combina Vercel e Nexo e devolve métricas agregadas. |
 
-A API não persiste dados analíticos nesta versão. As respostas vêm da API de Web Analytics da Vercel.
+## Coleta de eventos
 
-## Convenções
+`POST /api/v1/collect` recebe eventos do navegador. Não exige login, porque o tracker roda publicamente no portfólio; valida `Origin`, `site_id`, formato, caminho e limite de requisições. O identificador do site é público, não é uma credencial.
 
-- Prefixo: `/api/v1`.
-- Transporte: HTTPS em ambientes publicados.
-- Corpo: JSON UTF-8.
-- Datas: ISO 8601 com fuso horário definido.
-- Erros: respostas consistentes, sem stack traces ou detalhes internos.
-- Listagens: paginação e limites explícitos.
-- Relatórios: intervalo máximo configurável para evitar consultas excessivas.
-
-## Saúde
-
-### `GET /health`
-Retorna estado mínimo da aplicação. Não deve expor segredos, configuração sensível ou dados pessoais.
-
-## Autenticação administrativa
-
-- `POST /api/v1/auth/login`: valida credenciais e inicia sessão segura.
-- `POST /api/v1/auth/logout`: responde `204` para uma sessão autenticada.
-- `GET /api/v1/auth/me`: retorna informações mínimas da conta autenticada.
-
-Nesta versão, a sessão usa bearer token assinado com validade curta. O frontend mantém o token apenas em memória. A rota de logout não revoga o token no servidor; ele deixa de valer quando expira.
-
-## Sites
-
-- `GET /api/v1/sites`: lista apenas sites acessíveis pelo usuário.
-- `POST /api/v1/sites`: cria um site.
-- `GET /api/v1/sites/{site_id}`: consulta um site autorizado.
-- `PATCH /api/v1/sites/{site_id}`: altera campos permitidos.
-- `DELETE /api/v1/sites/{site_id}`: inicia exclusão controlada, com confirmação e tratamento dos dados relacionados.
-
-## Domínios
-
-- `GET /api/v1/sites/{site_id}/domains`
-- `POST /api/v1/sites/{site_id}/domains`
-- `DELETE /api/v1/sites/{site_id}/domains/{domain_id}`
-
-A verificação de propriedade do domínio deve ser planejada se for necessária para o nível de proteção pretendido.
-
-## Coleta pública
-
-### `POST /api/v1/collect`
-
-Recebe eventos enviados pelo SDK. O payload deve conter somente campos permitidos, por exemplo:
+Exemplo:
 
 ```json
 {
-  "project_id": "public-project-id",
-  "event_type": "page_view",
-  "page_path": "/projects/example",
-  "occurred_at": "2026-01-01T12:00:00Z",
-  "session_id": "ephemeral-session-id",
-  "properties": {}
+  "event_id": "c25395c7-49ef-4bbb-a24d-0f9f719b4fd1",
+  "site_id": "lvc4br-lv-portfolio",
+  "session_id": "f79f232b-bb71-4a77-95c7-21691b096458",
+  "event_name": "page_view",
+  "path": "/projects"
 }
 ```
 
-Esse JSON é um exemplo de contrato, não um formato já validado pelo servidor. O backend deve validar tipo, tamanho, timestamp, projeto, domínio e propriedades. Deve rejeitar tipos desconhecidos e payloads excessivos, aplicar rate limiting e não confiar no cliente para dados sensíveis.
+`event_name` aceita letras, números e `_ . : -`, começa com letra e tem até 80 caracteres. `path` começa com `/`, tem até 300 caracteres e não aceita query string nem fragmento. O horário é definido pelo servidor, não pelo relógio do navegador. IP e `Referer` não são gravados na tabela de eventos.
 
-## Analytics
+Respostas `202` indicam evento aceito. Repetições do mesmo `event_id` retornam `202` com `duplicate: true` sem criar nova linha. A origem deve estar em `PORTFOLIO_ALLOWED_ORIGINS` e o site precisa coincidir com `PORTFOLIO_SITE_ID`; caso contrário a API responde `403` ou `404`. O limite padrão em memória é 120 eventos por minuto e por origem.
 
-- `GET /api/v1/sites/{site_id}/analytics/overview?from=...&to=...`
-- `GET /api/v1/sites/{site_id}/analytics/pages?from=...&to=...`
-- `GET /api/v1/sites/{site_id}/analytics/events?from=...&to=...`
-- `GET /api/v1/sites/{site_id}/analytics/opportunities?from=...&to=...`
+## Resposta de analytics
 
-Os endpoints de analytics planejados por `site_id` ainda não foram implementados. A rota funcional atual é `GET /api/v1/analytics/overview?days=7|30|90`, autenticada, que consulta o projeto Vercel configurado no backend.
+`GET /api/v1/analytics/overview?days=30` requer `Authorization: Bearer <token>`. A resposta inclui:
 
-## Exportação e privacidade
+- `sources`: estado das integrações `vercel`, `nexo` e `vercel_events`;
+- `metrics.pageviews_source`: `vercel` quando a consulta Vercel funciona ou `nexo` como fallback;
+- `metrics.pageviews` e `metrics.visitors`: fonte principal selecionada, sem somar pageviews dos dois provedores;
+- `metrics.nexo_pageviews`, `metrics.nexo_sessions` e `metrics.engaged_sessions`: coleta própria em separado;
+- `events`: eventos personalizados recebidos pelo Nexo;
+- `vercel_events`: eventos agregados pela Vercel, mantidos separados;
+- `traffic`, `popular_pages`, `comparison` e `insights`: análises calculadas para o período escolhido.
 
-Endpoints de exportação e exclusão serão definidos após estabelecer política de retenção, verificação de identidade e controles contra abuso. A exportação não deve permitir que um usuário consulte dados de outro projeto.
+Os valores de visitantes da Vercel são somas de contagens diárias. Os valores Nexo são sessões pseudônimas baseadas em `sessionStorage`; nenhum dos dois representa identidade civil.
 
-## Códigos HTTP esperados
+## Autenticação
 
-- `200`: consulta ou atualização concluída.
-- `201`: recurso criado.
-- `204`: ação concluída sem corpo.
-- `400`: requisição inválida.
-- `401`: não autenticado.
-- `403`: sem autorização.
-- `404`: recurso não encontrado ou ocultado por política de acesso.
-- `409`: conflito de estado.
-- `413`: payload excessivo.
-- `422`: falha de validação.
-- `429`: limite de requisições excedido.
-- `500`: erro interno genérico, sem detalhes sensíveis.
+O token administrativo é assinado e expira conforme `SESSION_TTL_MINUTES` (30 minutos por padrão). O frontend o mantém somente em memória. `/logout` não revoga tokens previamente emitidos; eles deixam de valer ao expirar.
 
-## Testes mínimos
+## Persistência e erros
 
-- Entrada válida e inválida no coletor.
-- Projeto inexistente ou inativo.
-- Domínio não permitido.
-- Rate limiting.
-- Tentativa de ler dados de outro site.
-- Períodos de relatório inválidos ou excessivos.
-- Respostas sem credenciais ou detalhes internos.
+O desenvolvimento local usa SQLite em `services/api/.data/nexo.sqlite3`. A produção exige PostgreSQL persistente via `DATABASE_URL`; a API falha no início se `APP_ENV=production` sem banco durável. Tabelas são inicializadas no startup da aplicação e eventos antigos são removidos conforme `TRACKER_EVENT_RETENTION_DAYS`.
+
+FastAPI usa `422` para entrada malformada, `401` para sessão ausente/expirada, `403` para origem rejeitada, `404` para site ID desconhecido e `429` para limite de coleta excedido. Falhas da Vercel não derrubam o dashboard: a API recorre às métricas Nexo se houver eventos próprios.

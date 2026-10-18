@@ -82,11 +82,13 @@ export default function DashboardPage() {
   }
 
   const metrics = overview ? [
-    { label: "Visualizações de página", value: numberFormat.format(overview.metrics.pageviews), change: overview.comparison.pageviews_percent, icon: "eye", note: "vs. período anterior" },
-    { label: "Visitantes por dia", value: numberFormat.format(overview.metrics.visitors), change: overview.comparison.visitors_percent, icon: "activity", note: "soma diária do período" },
-    { label: "Visualizações / visitante-dia", value: decimalFormat.format(overview.metrics.pageviews_per_visitor), change: null, icon: "layers", note: "média no período" },
-    { label: "Eventos personalizados", value: numberFormat.format(overview.metrics.events), change: overview.comparison.events_percent, icon: "sparkle", note: "enviados pelo portfólio" },
+    { label: "Visualizações de página", value: numberFormat.format(overview.metrics.pageviews), change: overview.comparison.pageviews_percent, icon: "eye", note: `fonte principal: ${overview.metrics.pageviews_source === "vercel" ? "Vercel" : "tracker Nexo"}` },
+    { label: overview.metrics.visitors_source === "vercel" ? "Visitantes por dia" : "Sessões Nexo", value: numberFormat.format(overview.metrics.visitors), change: overview.comparison.visitors_percent, icon: "activity", note: overview.metrics.visitors_source === "vercel" ? "soma diária informada pela Vercel" : "identificador temporário por aba" },
+    { label: "Visualizações / visitante ou sessão", value: decimalFormat.format(overview.metrics.pageviews_per_visitor), change: null, icon: "layers", note: "média na fonte principal" },
+    { label: "Sessões com interação", value: `${decimalFormat.format(overview.metrics.engagement_percent)}%`, change: null, icon: "sparkle", note: `${numberFormat.format(overview.metrics.engaged_sessions)} sessões com evento Nexo` },
   ] : [];
+  const combinedEvents = overview ? [...overview.events, ...overview.vercel_events].sort((a, b) => b.count - a.count) : [];
+  const portfolioUrl = `https://${overview?.domain ?? "luca-toniolo.vercel.app"}`;
 
   const today = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date());
 
@@ -119,8 +121,8 @@ export default function DashboardPage() {
         <div className="sidebar-site-card">
           <div className="site-card-heading"><span className="site-mini-mark">LT</span><span>PORTFÓLIO CONECTADO</span></div>
           <strong>{overview?.domain ?? "luca-toniolo.vercel.app"}</strong>
-          <span className={`site-pending${overview ? " site-connected" : ""}`}><i /> {overview ? "Sincronizado com a Vercel" : "Conectando à Vercel"}</span>
-          <a href="https://luca-toniolo.vercel.app" target="_blank" rel="noreferrer">Abrir portfólio <Icon name="external" size={13} /></a>
+          <span className={`site-pending${overview?.sources.nexo === "receiving" || overview?.sources.vercel === "connected" ? " site-connected" : ""}`}><i /> {overview?.sources.vercel === "connected" ? "Vercel + Nexo ativos" : overview?.sources.nexo === "receiving" ? "Tracker Nexo recebendo dados" : "Aguardando dados do portfólio"}</span>
+          <a href={portfolioUrl} target="_blank" rel="noreferrer">Abrir portfólio <Icon name="external" size={13} /></a>
         </div>
         <div className="sidebar-profile">
           <span className="profile-avatar">LT</span>
@@ -133,7 +135,7 @@ export default function DashboardPage() {
         <header className="dashboard-topbar">
           <button className="mobile-menu-button" type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menu"><Icon name="menu" size={20} /></button>
           <div className="topbar-breadcrumb"><span>Workspace</span><span>/</span><strong>Visão geral</strong></div>
-          <a className="topbar-portfolio-link" href="https://luca-toniolo.vercel.app" target="_blank" rel="noreferrer">Ver portfólio <Icon name="arrow-up-right" size={15} /></a>
+          <a className="topbar-portfolio-link" href={portfolioUrl} target="_blank" rel="noreferrer">Ver portfólio <Icon name="arrow-up-right" size={15} /></a>
         </header>
 
         <main className="dashboard-content">
@@ -141,7 +143,7 @@ export default function DashboardPage() {
             <div>
               <p className="dashboard-overline">{today.toLocaleUpperCase("pt-BR")}</p>
               <h1>Visão geral</h1>
-              <p className="dashboard-subtitle">Dados do portfólio consultados na Vercel.</p>
+              <p className="dashboard-subtitle">Métricas da Vercel combinadas com eventos coletados diretamente pelo Nexo.</p>
             </div>
             <label className="period-pill"><Icon name="calendar" size={16} /><span className="sr-only">Período de análise</span>
               <select className="period-select" value={days} onChange={(event) => setDays(Number(event.target.value))}>
@@ -153,14 +155,14 @@ export default function DashboardPage() {
             </label>
           </div>
 
-          {loading && <div className="dashboard-state" role="status"><span className="loading-indicator" /> Consultando o Web Analytics da Vercel…</div>}
+          {loading && <div className="dashboard-state" role="status"><span className="loading-indicator" /> Consultando as fontes de dados do portfólio…</div>}
           {errorMessage && <div className="dashboard-state dashboard-error" role="alert"><Icon name="info" size={18} /><span><strong>Não foi possível carregar os dados</strong><small>{errorMessage}</small></span><button type="button" onClick={() => setRefreshKey((current) => current + 1)}>Tentar novamente</button></div>}
 
           {overview && !loading && <>
             <div className="data-source-banner" role="note">
               <span className="data-source-icon"><Icon name="shield" size={17} /></span>
-              <p><strong>Fonte conectada: Vercel Web Analytics</strong><span>Comparação com os {days} dias anteriores. Visitantes são somados por dia, como a Vercel define esse indicador.</span></p>
-              <span className="data-source-tag"><i /> DADOS REAIS</span>
+              <p><strong>{overview.sources.vercel === "connected" ? "Vercel Web Analytics + tracker próprio Nexo" : overview.sources.vercel === "unavailable" ? "Usando o tracker próprio Nexo" : "Tracker próprio Nexo"}</strong><span>{overview.sources.vercel === "connected" ? `Vercel: ${numberFormat.format(overview.metrics.vercel_pageviews ?? 0)} pageviews; Nexo: ${numberFormat.format(overview.metrics.nexo_pageviews)}. O painel usa a Vercel como fonte principal sem somar as contagens. Sessões e interações vêm do Nexo.` : "As métricas vêm dos eventos que o portfólio envia ao Nexo. Ao instalar/configurar a Vercel, ela será a fonte principal de pageviews e o tracker continuará complementando as interações."}</span></p>
+              <span className="data-source-tag"><i /> {overview.sources.nexo === "receiving" ? "NEXO RECEBENDO" : overview.sources.vercel === "connected" ? "VERCEL CONECTADA" : "AGUARDANDO TRACKER"}</span>
             </div>
 
             <section className="metric-grid" aria-label="Métricas resumidas">
@@ -191,21 +193,21 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="chart-x-labels">{dateTicks.map((day) => <span key={day.date}>{formatDate(day.date, { day: "2-digit", month: "short" })}</span>)}</div>
-                <div className="chart-legend"><i /><span>Visualizações de página</span><small>{formatChange(overview.comparison.pageviews_percent)} vs. período anterior</small></div>
+                <div className="chart-legend"><i /><span>Visualizações · {overview.metrics.pageviews_source === "vercel" ? "Vercel" : "Nexo"}</span><small>{formatChange(overview.comparison.pageviews_percent)} vs. período anterior</small></div>
               </article>
 
               <article className="panel events-panel">
                 <div className="panel-heading compact-heading"><div><span className="panel-overline">INTERAÇÕES</span><h2>Eventos personalizados</h2></div><span className="small-count">{days} DIAS</span></div>
-                {overview.events.length > 0 ? <div className="event-list">
-                  {overview.events.slice(0, 6).map((event) => (
-                    <div className="event-row" key={event.name}>
+                {combinedEvents.length > 0 ? <div className="event-list">
+                  {combinedEvents.slice(0, 6).map((event) => (
+                    <div className="event-row" key={`${event.source}:${event.name}`}>
                       <span className="event-icon"><Icon name="sparkle" size={16} /></span>
-                      <span className="event-copy"><strong>{event.name}</strong><small>{numberFormat.format(event.visitors)} visitantes</small></span>
+                      <span className="event-copy"><strong>{event.name}</strong><small>{event.source === "nexo" ? `${numberFormat.format(event.sessions)} sessões · Nexo` : `${numberFormat.format(event.visitors)} visitantes agregados · Vercel`}</small></span>
                       <span className="event-count">{numberFormat.format(event.count)}</span>
                     </div>
                   ))}
-                </div> : <div className="empty-events"><Icon name="activity" size={20} /><strong>Nenhum evento personalizado</strong><span>As visualizações de página continuam sendo coletadas automaticamente. Eventos de interação dependem da instrumentação no portfólio e do plano da Vercel.</span></div>}
-                <div className="event-footnote"><Icon name="lock" size={14} /> Exibimos apenas dados agregados retornados pela Vercel.</div>
+                </div> : <div className="empty-events"><Icon name="activity" size={20} /><strong>Nenhuma interação recebida</strong><span>Instale o tracker Nexo no portfólio e chame track() nos links de currículo, projetos e contato. Eventos Vercel aparecem separadamente quando disponíveis.</span></div>}
+                <div className="event-footnote"><Icon name="lock" size={14} /> Eventos Vercel e Nexo aparecem separados; cada contagem mantém sua origem.</div>
               </article>
             </section>
 
@@ -227,13 +229,13 @@ export default function DashboardPage() {
               <article className="panel connection-panel">
                 <div className="panel-heading compact-heading"><div><span className="panel-overline">ANÁLISE AUTOMÁTICA</span><h2>O que os dados mostram</h2></div><span className="connection-icon"><Icon name="chart" size={18} /></span></div>
                 <ul className="insight-list">{overview.insights.map((insight) => <li key={insight}><Icon name="sparkle" size={15} /><span>{insight}</span></li>)}</ul>
-                <div className="connection-domain"><span className="domain-favicon">LT</span><span><strong>{overview.domain}</strong><small>Web Analytics da Vercel</small></span><span className="connection-status connection-status-active"><i /> Conectado</span></div>
-                <a className="portfolio-button" href="https://luca-toniolo.vercel.app" target="_blank" rel="noreferrer">Abrir portfólio <Icon name="arrow-up-right" size={16} /></a>
-                <div className="connection-footnote"><Icon name="info" size={14} /> Comparações e visitantes seguem a agregação diária da Vercel.</div>
+                <div className="connection-domain"><span className="domain-favicon">LT</span><span><strong>{overview.domain}</strong><small>{overview.sources.vercel === "connected" ? "Vercel Web Analytics" : "Portfólio configurado para o Nexo"}</small></span><span className={`connection-status${overview.sources.vercel === "connected" || overview.sources.nexo === "receiving" ? " connection-status-active" : ""}`}><i /> {overview.sources.vercel === "connected" ? "Vercel ativa" : overview.sources.nexo === "receiving" ? "Nexo ativo" : "Sem eventos"}</span></div>
+                <a className="portfolio-button" href={portfolioUrl} target="_blank" rel="noreferrer">Abrir portfólio <Icon name="arrow-up-right" size={16} /></a>
+                <div className="connection-footnote"><Icon name="info" size={14} /> Pageviews vêm de uma única fonte principal; o tracker Nexo mede sessões e interações próprias.</div>
               </article>
             </section>
 
-            <footer className="dashboard-footer"><span>NEXO ANALYTICS <i /> DADOS CONSULTADOS NA VERCEL</span><button type="button" onClick={leaveDashboard}>Sair da conta</button></footer>
+            <footer className="dashboard-footer"><span>NEXO ANALYTICS <i /> VERCEL + COLETA PRÓPRIA</span><button type="button" onClick={leaveDashboard}>Sair da conta</button></footer>
           </>}
         </main>
       </div>

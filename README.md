@@ -1,185 +1,156 @@
 # Nexo Analytics
 
-**Plataforma independente de analytics para administrar e analisar múltiplos sites em um único painel.**
+Painel privado para combinar dados agregados do Web Analytics da Vercel com eventos coletados diretamente do portfólio. O dashboard é React com JSX e Vite; a API é Python/FastAPI.
 
-O Nexo Analytics está começando por um painel administrativo para o portfólio Luca Toniolo. A interface React conversa com uma API Python/FastAPI, que consulta os dados agregados do Web Analytics da Vercel, calcula comparações e indicadores e devolve os resultados ao dashboard.
+## Como as fontes se combinam
 
-> **Status:** primeira versão funcional em desenvolvimento. O login de administrador e a consulta do Web Analytics foram implementados; as credenciais da Vercel e do administrador ainda precisam ser configuradas no ambiente local ou no provedor da API.
+- **Pageviews principais:** Vercel quando a consulta ao Web Analytics funciona; eventos `page_view` do tracker Nexo quando a Vercel não está configurada ou indisponível.
+- **Sessões e interações próprias:** coletadas pelo Nexo, independentemente de onde o portfólio está hospedado.
+- **Eventos personalizados da Vercel:** apresentados separados dos eventos Nexo.
+- **Sem duplicidade:** pageviews da Vercel e do tracker nunca são somados. A resposta da API indica qual fonte está sendo usada.
+- **Troca de hospedagem:** depois que o tracker estiver instalado e apontando para a API Nexo, mudar a hospedagem do portfólio não muda o endpoint de coleta.
 
-## Objetivos
+O tracker envia apenas nome do evento, caminho da página sem query string ou fragmento, identificador aleatório da sessão da aba e identificador do evento. Ele não envia IP, referenciador, formulário ou dados de usuário. A configuração respeita `Do Not Track`.
 
-- Administrar vários sites/projetos em uma única conta.
-- Coletar visualizações de página e eventos permitidos.
-- Estimar sessões, recorrência e tempo ativo aproximado.
-- Apresentar métricas por site e uma visão consolidada.
-- Acompanhar eventos profissionais explícitos, como abertura do currículo e cliques em links de contato.
-- Aplicar isolamento entre projetos, minimização de dados e controles de privacidade desde o início.
-
-## Fora do escopo inicial
-
-- Hospedagem, builds e deploys como os oferecidos pela Vercel.
-- Identificação de pessoas reais ou de empresas a partir de visitas anônimas.
-- Fingerprinting invasivo.
-- Localização precisa baseada em IP.
-- Associação automática entre visitantes individuais e métricas agregadas de terceiros.
-
-## Stack atual e próximos passos
-
-| Camada | Tecnologia | Responsabilidade |
-|---|---|---|
-| Dashboard | React, JSX, Vite | Interface administrativa |
-| API | Python, FastAPI | Autenticação, validação e regras de negócio |
-| Fonte de métricas nesta versão | Vercel Web Analytics API | Visualizações, visitantes por dia, páginas e eventos personalizados |
-| Banco | PostgreSQL (futuro) | Persistir projetos, dados próprios e configurações |
-| SDK próprio | TypeScript/JavaScript (futuro) | Eventos que não são enviados pelo Web Analytics |
-| Gráficos | SVG no dashboard | Gráfico de tráfego sem dependência adicional |
-| Ambiente local | Docker Compose (planejado) | Execução coordenada dos serviços |
-| Qualidade | unittest e build Vite | Testes automatizados da API e validação do bundle frontend |
-
-As dependências da interface e da API estão nos manifests de cada serviço.
-
-## Arquitetura
-
-1. O administrador entra no dashboard e recebe um token de sessão curto.
-2. O dashboard chama a API FastAPI com esse token.
-3. A API consulta a Vercel usando um token secreto guardado apenas no backend.
-4. A API agrega visualizações por dia, compara períodos e calcula páginas populares e resumos.
-5. O dashboard apresenta os dados agregados e as análises.
-
-Esta primeira versão usa os dados agregados da Vercel e não requer banco de dados. O SDK próprio, projetos múltiplos e persistência são etapas futuras.
-
-Veja [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Estrutura planejada
+## Estrutura
 
 ```text
-nexo-analytics/
-├── apps/
-│   └── dashboard/
-├── services/
-│   └── api/
-├── packages/
-│   └── tracker-sdk/
-├── infra/
-├── docs/
-├── .github/
-├── .env.example
-├── .gitignore
-├── .editorconfig
-└── README.md
+apps/dashboard/             Interface administrativa React/JSX
+services/api/               API Python/FastAPI, SQLite local, PostgreSQL em produção
+packages/tracker-sdk/       Tracker JavaScript independente do framework e da hospedagem
+docs/                       Integração, API, privacidade e arquitetura
 ```
 
-A pasta `packages/tracker-sdk` e a infraestrutura de banco ainda são etapas futuras.
+## Executar localmente
 
-## Documentação
+Pré-requisitos: Git, Node.js/npm e Python 3.11 ou superior.
 
-- [Visão do produto](docs/VISION.md)
-- [Arquitetura](docs/ARCHITECTURE.md)
-- [Integração com Vercel e portfólio](docs/INTEGRATION_VERCEL.md)
-- [Modelo de dados](docs/DATA_MODEL.md)
-- [Contrato inicial da API](docs/API.md)
-- [SDK de rastreamento](docs/SDK.md)
-- [Segurança](docs/SECURITY.md)
-- [Privacidade e LGPD](docs/PRIVACY_LGPD.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Contribuição e fluxo Git](docs/CONTRIBUTING.md)
-- [Decisões arquiteturais](docs/DECISIONS.md)
+1. Na raiz, copie o exemplo de configuração:
 
-## Pré-requisitos
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-Para executar a aplicação localmente, utilize:
+   Preencha `DASHBOARD_EMAIL` e as credenciais administrativas. Para ler a Vercel, configure também `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID`; elas são opcionais porque o Nexo pode funcionar apenas com o tracker próprio.
 
-- Git;
-- Node.js compatível com o Vite 8 e npm;
-- Python 3.11 ou superior;
-- Editor de código, como Visual Studio Code.
+2. Instale e prepare a API:
 
-PostgreSQL e Docker não são necessários para esta primeira versão.
+   ```powershell
+   cd services/api
+   py -m venv .venv
+   .venv\Scripts\Activate.ps1
+   py -m pip install -r requirements.txt
+   py -m app.hash_password
+   ```
 
-## Estado atual e execução
+   Copie o hash da senha para `DASHBOARD_PASSWORD_HASH` no `.env`. Não guarde a senha em texto puro.
 
-O dashboard em `apps/dashboard` autentica o administrador na API e mostra métricas reais do projeto Vercel configurado. A API está em `services/api`; não são exibidos números fictícios. Para páginas vistas, é usada a agregação existente do Web Analytics. Eventos personalizados aparecem somente quando o portfólio os registra com `track()`.
+3. Inicie a API em um terminal:
 
-1. Na raiz do repositório, copie `.env.example` para `.env` (`Copy-Item .env.example .env` no PowerShell). Preencha `DASHBOARD_EMAIL`, `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID`. Se o projeto Vercel estiver em um Team, configure o `VERCEL_TEAM_ID` ou `VERCEL_TEAM_SLUG`. O token da Vercel fica somente no backend.
+   ```powershell
+   uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   ```
 
-2. Na pasta `services/api`, crie um ambiente virtual, instale as dependências e gere o hash da senha do administrador:
+   No primeiro início, a API cria `services/api/.data/nexo.sqlite3` automaticamente.
 
-```powershell
-cd services/api
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
-py -m app.hash_password
-```
+4. Em outro terminal, inicie o painel:
 
-Copie o hash impresso para `DASHBOARD_PASSWORD_HASH` no arquivo `.env`. Não salve a senha em texto puro.
+   ```powershell
+   cd apps/dashboard
+   npm install
+   npm run dev
+   ```
 
-3. Em um terminal com o ambiente Python ativado, inicie a API:
+   Abra `http://localhost:5173`. A documentação da API fica em `http://127.0.0.1:8000/docs`.
 
-```powershell
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+## Conectar o repositório LV_Portfolio
 
-4. Em outro terminal, inicie o dashboard:
+O tracker do Nexo é JavaScript simples e funciona com React, Vite ou outro site. Como o portfólio está em outro repositório, instale-o nele:
 
-```sh
-cd apps/dashboard
-npm install
-npm run dev
-```
+1. Copie `packages/tracker-sdk/src/index.js` para `src/lib/nexo-tracker.js` dentro do repositório `LV_Portfolio`.
+2. No `.env` do Nexo, confira `PORTFOLIO_SITE_ID=lvc4br-lv-portfolio` e inclua a origem do portfólio em `PORTFOLIO_ALLOWED_ORIGINS`. Para rodar localmente, use por exemplo `http://localhost:4173`; a origem de produção padrão é `https://luca-toniolo.vercel.app`.
+3. No `.env` do portfólio, adicione a URL pública da API Nexo e o ID público do site:
 
-O dashboard fica em `http://localhost:5173`; a documentação interativa da API fica em `http://127.0.0.1:8000/docs`. O build frontend pode ser gerado com `npm run build` dentro de `apps/dashboard`.
+   ```dotenv
+   VITE_NEXO_COLLECT_URL=https://SUA-API-NEXO/api/v1/collect
+   VITE_NEXO_SITE_ID=lvc4br-lv-portfolio
+   ```
 
-### Testes e verificações
+   A URL da API e o ID do site são públicos. **Não** adicione tokens ou senha do Nexo ao frontend.
 
-Com o ambiente virtual ativado e estando em `services/api`, execute os testes da API:
+4. Crie `src/lib/analytics.js` no portfólio:
+
+   ```js
+   import { createNexoTracker } from "./nexo-tracker.js";
+
+   const tracker = createNexoTracker({
+     endpoint: import.meta.env.VITE_NEXO_COLLECT_URL,
+     siteId: import.meta.env.VITE_NEXO_SITE_ID,
+     trackDevelopment: import.meta.env.DEV,
+   });
+
+   export default tracker;
+   ```
+
+   Importe esse módulo uma vez no ponto de entrada React, por exemplo `src/main.jsx`. O tracker registra pageviews iniciais e mudanças de rota SPA. Em callbacks de botões, importe `tracker` e chame `tracker.track("resume_open")`, `tracker.track("contact_click")` ou outro nome curto sem dados pessoais.
+
+5. Para teste local, rode a API e o portfólio em origens separadas. Por exemplo, inicie o Vite do portfólio com `npm run dev -- --port 4173`; o painel Nexo continua em `5173`. Depois, publique o portfólio novamente na Vercel para começar a enviar eventos de produção.
+
+O Nexo ainda precisa estar publicado em uma URL acessível pelo portfólio para a coleta de produção. O guia completo está em [docs/INTEGRATION_TRACKER.md](docs/INTEGRATION_TRACKER.md).
+
+## Habilitar a fonte Vercel (opcional)
+
+No projeto Vercel que hospeda `LV_Portfolio`, habilite **Web Analytics**. Gere um Access Token com permissão ao projeto, copie o Project ID e configure `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID` no ambiente da API Nexo. Para um projeto dentro de um Team, preencha também `VERCEL_TEAM_ID` ou `VERCEL_TEAM_SLUG`. Esses segredos ficam só no backend.
+
+Ao conectar a Vercel, o painel usa seus pageviews agregados como fonte principal e mantém sessões/interações do Nexo separadas. Se a consulta Vercel falhar, o painel usa pageviews Nexo como fallback. Para mudar o domínio do portfólio, atualize `PORTFOLIO_DOMAIN` e `PORTFOLIO_ALLOWED_ORIGINS`.
+
+## Testes e build
+
+Na pasta `services/api`:
 
 ```powershell
 py -m unittest discover -s tests -v
 ```
 
-Os testes cobrem a autenticação, a proteção das rotas e a análise de uma resposta simulada da Vercel. Eles não usam credenciais nem fazem chamadas externas. Para conferir o build do dashboard, estando em `apps/dashboard`, execute:
+Na pasta `packages/tracker-sdk`:
 
-```powershell
+```sh
+npm test
+```
+
+Na pasta `apps/dashboard`:
+
+```sh
 npm run build
 ```
 
-### Como alterar o projeto
+## Produção
 
-- **Tela de login:** edite `apps/dashboard/src/pages/LoginPage.jsx`.
-- **Dashboard e apresentação das métricas:** edite `apps/dashboard/src/pages/DashboardPage.jsx`.
-- **Estilos e comportamento responsivo:** edite `apps/dashboard/src/styles.css`.
-- **Chamadas do React à API:** edite `apps/dashboard/src/lib/api.js`.
-- **Rotas de login e regras de sessão:** edite `services/api/app/routers/auth.py` e `services/api/app/security.py`.
-- **Consulta à Vercel, cálculos e insights:** edite `services/api/app/routers/analytics.py` e `services/api/app/integrations/vercel.py`.
-- **Configurações e nomes das variáveis de ambiente:** atualize `services/api/app/config.py` e documente valores de exemplo em `.env.example`. Segredos reais ficam somente no `.env` local ou nas variáveis privadas do provedor.
+SQLite é apenas para desenvolvimento local. A API em produção exige um PostgreSQL persistente e a variável `DATABASE_URL`, pois o disco de funções serverless não é armazenamento durável. Configure também `APP_ENV=production`, `SESSION_SECRET` aleatória com pelo menos 32 caracteres, `DASHBOARD_EMAIL`, `DASHBOARD_PASSWORD_HASH`, `CORS_ALLOWED_ORIGINS` com a origem do painel e `PORTFOLIO_ALLOWED_ORIGINS` com as origens do site. `VITE_API_BASE_URL` aponta para a API e deve incluir `/api/v1`.
 
-Durante o desenvolvimento, mantenha a API e o dashboard rodando em terminais separados. Depois de alterar a API, rode `py -m unittest discover -s tests -v`; depois de alterar o frontend, rode `npm run build`. O guia [docs/INTEGRATION_VERCEL.md](docs/INTEGRATION_VERCEL.md) explica a conexão ao portfólio e a publicação dos dois serviços.
+A URL da API deve ser acessível tanto pelo painel quanto pelo site do portfólio. O Nexo não faz deploy da aplicação monitorada: ele recebe eventos do navegador e consulta dados agregados da Vercel quando configurado.
 
-### Publicação
+## Métricas e limites
 
-O dashboard e a API podem ser publicados como projetos separados na Vercel. Use `apps/dashboard` como Root Directory do frontend e `services/api` como Root Directory da API Python/FastAPI. Configure `VITE_API_BASE_URL` no build do dashboard e `APP_ENV=production`, `CORS_ALLOWED_ORIGINS`, `SESSION_SECRET`, `DASHBOARD_EMAIL`, `DASHBOARD_PASSWORD_HASH` e as credenciais do projeto Vercel no host da API. Não coloque o token da Vercel em variáveis `VITE_*`. Veja o [guia de integração](docs/INTEGRATION_VERCEL.md).
+- A métrica “Visitantes por dia” da Vercel é a soma dos valores diários dela; não representa pessoas únicas no intervalo inteiro.
+- As sessões Nexo usam um ID temporário em `sessionStorage`, limitado à aba/sessão do navegador; não identificam uma pessoa.
+- A taxa de engajamento é a porcentagem de sessões Nexo com pelo menos uma interação personalizada.
+- Vercel e Nexo não compartilham identificadores; não há associação de visitas agregadas com indivíduos.
+- O coletor valida origem, site, caminho e formato e aplica um limite local em memória. Em produção, configure também rate limiting compartilhado no proxy/gateway.
+- Revise aviso de privacidade, base legal e retenção antes de operar com visitantes reais. Leia [docs/PRIVACY_LGPD.md](docs/PRIVACY_LGPD.md).
 
-### Limites desta versão
+## Documentação
 
-- Os visitantes são contados por dia e somados ao longo do período; não representam pessoas únicas em todo o intervalo.
-- O Web Analytics fornece valores agregados. O dashboard não vê identidades nem eventos individuais.
-- Páginas vistas são automáticas quando o Web Analytics do projeto Vercel está habilitado. Cliques em currículo ou contato precisam ser instrumentados como eventos personalizados no portfólio, e a disponibilidade depende do plano Vercel.
-- A sessão do dashboard dura 30 minutos e fica na memória do navegador; atualizar a página pede novo login.
-
-## Princípios do projeto
-
-1. Segurança e isolamento por projeto.
-2. Privacidade e minimização por padrão.
-3. Métricas transparentes, com limitações explicitadas.
-4. Arquitetura modular sem microsserviços prematuros.
-5. Código testável, documentação atualizada e mudanças pequenas.
-6. Nenhum segredo ou dado real de visitante em commits.
+- [Arquitetura](docs/ARCHITECTURE.md)
+- [Integração com Vercel](docs/INTEGRATION_VERCEL.md)
+- [Integração do tracker no portfólio](docs/INTEGRATION_TRACKER.md)
+- [Contrato da API](docs/API.md)
+- [Tracker SDK](docs/SDK.md)
+- [Modelo de dados](docs/DATA_MODEL.md)
+- [Privacidade e LGPD](docs/PRIVACY_LGPD.md)
+- [Segurança](docs/SECURITY.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Licença
 
-A licença ainda precisa ser definida. Até que exista um arquivo de licença, não presuma que o código pode ser reutilizado, redistribuído ou comercializado livremente.
-
-## Aviso
-
-Este projeto não é afiliado à Vercel. A documentação sobre privacidade é orientação técnica inicial, não aconselhamento jurídico. Antes de coletar dados reais, revisar segurança, base legal, aviso de privacidade, retenção e controles de titulares.
+Ainda não há licença definida. Até que ela seja publicada, não presuma que o código pode ser reutilizado, redistribuído ou comercializado livremente.

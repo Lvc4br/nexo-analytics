@@ -1,83 +1,45 @@
-# SDK JavaScript de rastreamento
+# Tracker JavaScript Nexo
 
-## Objetivo
+O pacote local está em `packages/tracker-sdk`. Ele é JavaScript ESM sem dependências e não depende de React, Vite, Vercel nem de um provedor de hospedagem.
 
-O SDK será um pacote pequeno para integrar sites ao Nexo Analytics. Sua responsabilidade é enviar eventos de telemetria permitidos; não deve administrar contas nem consultar relatórios privados.
+## Uso
 
-## Instalação planejada
+Como o portfólio atual está em outro repositório e o pacote ainda não foi publicado no npm, copie `packages/tracker-sdk/src/index.js` para o código do site e importe a função:
 
-A forma final de distribuição ainda será definida. Uma opção é disponibilizar um script hospedado pelo próprio serviço:
+```js
+import { createNexoTracker } from "./nexo-tracker.js";
 
-```html
-<script
-  defer
-  src="https://SEU-DOMINIO/sdk.js"
-  data-project="PUBLIC_PROJECT_ID">
-</script>
+const tracker = createNexoTracker({
+  endpoint: "https://SUA-API-NEXO/api/v1/collect",
+  siteId: "lvc4br-lv-portfolio",
+  trackDevelopment: import.meta.env.DEV,
+});
+
+tracker.track("resume_open");
 ```
 
-O domínio e o atributo acima são placeholders. Não copiar para produção antes de a distribuição estar implementada.
+No LV_Portfolio, leia `endpoint` de `VITE_NEXO_COLLECT_URL` e `siteId` de `VITE_NEXO_SITE_ID`; não hardcode a URL de API por ambiente. O snippet React completo está em [docs/INTEGRATION_TRACKER.md](./INTEGRATION_TRACKER.md).
 
-## Eventos iniciais
+## Opções e métodos
 
-- `page_view`: visualização de página.
-- `custom_event`: evento de uma lista permitida.
-- `resume_open`: abertura de página de currículo, se configurado.
-- `project_view`: visualização de projeto.
-- `outbound_click`: clique em link profissional permitido.
+- `endpoint` (obrigatório): URL pública HTTPS de `POST /api/v1/collect`.
+- `siteId` (obrigatório): valor igual a `PORTFOLIO_SITE_ID` na API.
+- `autoPageViews` (opcional, padrão `true`): registra a rota inicial e transições de History API/`popstate` sem query strings ou fragmentos.
+- `enabled` (opcional, padrão `true`): permite desligar o tracker.
+- `trackDevelopment` (opcional, padrão `false`): libera a coleta em `localhost` para testar.
+- `track(eventName)`: registra interação personalizada sem propriedades arbitrárias.
+- `page()`: registra manualmente a rota atual; chamadas repetidas para a mesma rota não duplicam a visualização automática.
+- `destroy()`: remove listeners e wrappers de histórico.
 
-Não capturar conteúdo de formulários, teclas digitadas, senhas, dados de pagamento, conteúdo privado, query strings completas ou dados sensíveis.
+Por padrão, o SDK pausa a coleta quando `navigator.doNotTrack === "1"`, quando `window.__nexoAnalyticsDisabled` é `true`, quando `enabled` é `false` ou quando executa em localhost sem `trackDevelopment`.
+Se `endpoint` ou `siteId` estiver ausente, ele fica inativo sem interromper o site.
 
-## Sessões e visitantes
+## Payload
 
-O SDK pode usar identificadores de sessão e, se justificado e configurado, identificadores pseudônimos persistentes. A política deve explicar finalidade, duração, armazenamento e escolha de consentimento quando aplicável. Não usar fingerprinting invasivo. Um ID não prova identidade civil nem representa necessariamente um dispositivo físico único.
+O navegador envia `event_id`, `site_id`, `session_id`, `event_name` e `path`. O `session_id` aleatório é mantido em `sessionStorage`; o evento usa um ID aleatório para permitir deduplicação. Não há cookie persistente, fingerprinting, propriedades livres, IP, referenciador, query string, fragmento ou conteúdo de formulário no payload.
 
-## Privacidade
+O coletor valida o payload novamente. `Origin` ajuda a limitar as origens aceitas, mas é público e pode ser falsificado fora do navegador; produção deve aplicar rate limiting compartilhado no gateway além do limite local em memória.
 
-- Respeitar configurações de consentimento e preferências do usuário quando aplicáveis.
-- Permitir desativar eventos não essenciais.
-- Minimizar dados e tamanho do payload.
-- Remover query strings e fragmentos da URL por padrão.
-- Não incluir IP no payload do SDK.
-- Não registrar conteúdo arbitrário de DOM.
-- Não bloquear a navegação se a coleta falhar.
-- Oferecer mecanismo para desativar o tracker em ambientes de desenvolvimento.
+## Testar
 
-## Robustez e segurança
-
-- Enviar por HTTPS.
-- Aplicar timeout e tratamento de falhas.
-- Limitar o tamanho e a frequência dos eventos.
-- Evitar loops de envio e duplicação quando possível.
-- Validar novamente todos os campos no backend; a validação do SDK não é uma barreira de segurança.
-- O identificador público do projeto pode ser exposto no navegador; segredos administrativos não podem.
-
-## API pública planejada
-
-Uma interface possível:
-
-```ts
-type NexoConfig = {
-  projectId: string;
-  endpoint?: string;
-  enabled?: boolean;
-};
-
-type NexoTracker = {
-  track(eventName: string, properties?: Record<string, unknown>): void;
-  page(): void;
-  disable(): void;
-};
-```
-
-Essa assinatura é uma proposta. Antes de publicar, definir nomes finais, tipos permitidos, comportamento de consentimento, versionamento semântico e compatibilidade entre SDK e API.
-
-## Testes
-
-- Eventos aceitos e rejeitados.
-- Falha de rede sem bloquear a página.
-- Remoção de query strings.
-- Desativação da coleta.
-- Respeito a consentimento quando configurado.
-- Limites de payload e de frequência.
-- Compatibilidade com navegação tradicional e aplicações SPA.
+Dentro de `packages/tracker-sdk`, execute `npm test`. Os testes verificam pageviews, eventos, navegação SPA, remoção de query/fragment e respeito a Do Not Track.
