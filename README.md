@@ -98,6 +98,32 @@ O tracker do Nexo é JavaScript simples e funciona com React, Vite ou outro site
 
 O Nexo ainda precisa estar publicado em uma URL acessível pelo portfólio para a coleta de produção. O guia completo está em [docs/INTEGRATION_TRACKER.md](docs/INTEGRATION_TRACKER.md).
 
+## Usar o painel e administrar a conta
+
+Com a API e o dashboard em execução, abra `http://localhost:5173` e entre com o e-mail definido em `DASHBOARD_EMAIL` e a senha usada para gerar `DASHBOARD_PASSWORD_HASH`. O dashboard permite escolher um período de 7, 30 ou 90 dias, consultar as métricas e sair da sessão pelo botão **Sair da conta**.
+
+Esta versão tem um único administrador configurado por variáveis de ambiente. Não existe tela para criar usuários, alterar senha ou recuperar uma senha esquecida. Para trocar o e-mail, edite `DASHBOARD_EMAIL` no ambiente privado da API e reinicie/republique a API.
+
+### Trocar ou redefinir a senha no ambiente local
+
+No PowerShell, abra a pasta da API e ative o ambiente virtual:
+
+```powershell
+cd services/api
+.venv\Scripts\Activate.ps1
+py -m app.hash_password
+```
+
+O comando solicita a nova senha duas vezes e imprime um hash Argon2. A senha precisa ter entre 12 e 128 caracteres. Copie somente o hash para `DASHBOARD_PASSWORD_HASH` no `.env` da raiz do repositório. Nunca coloque a senha em texto puro no `.env`, no código ou no Git.
+
+Reinicie a API para aplicar a alteração. Depois, saia do painel e entre usando a nova senha. Tokens de sessões que já estavam abertas continuam válidos até expirarem (30 minutos por padrão). Para invalidar imediatamente as sessões existentes, altere também `SESSION_SECRET` para um novo valor aleatório de pelo menos 32 caracteres e reinicie a API; isso encerra todas as sessões administrativas atuais.
+
+### Trocar a senha em produção
+
+Execute `py -m app.hash_password` localmente, com as dependências da API instaladas, e copie o hash gerado para a variável privada `DASHBOARD_PASSWORD_HASH` no serviço que hospeda a API Nexo. Atualize `DASHBOARD_EMAIL` se necessário e faça um novo deploy/reinicie a API. Não cadastre essas credenciais nas variáveis do dashboard React ou do repositório do portfolio. Se redefinir a senha, informe a nova senha ao administrador por um canal seguro; o Nexo não envia e-mail de recuperação.
+
+O arquivo `.env` contém configurações e credenciais locais e não deve ser commitado. Use [`.env.example`](.env.example) apenas como modelo, sem inserir valores secretos nele.
+
 ## Habilitar a fonte Vercel (opcional)
 
 No projeto Vercel que hospeda `LV_Portfolio`, habilite **Web Analytics**. Gere um Access Token com permissão ao projeto, copie o Project ID e configure `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID` no ambiente da API Nexo. Para um projeto dentro de um Team, preencha também `VERCEL_TEAM_ID` ou `VERCEL_TEAM_SLUG`. Esses segredos ficam só no backend.
