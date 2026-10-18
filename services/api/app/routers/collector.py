@@ -1,8 +1,9 @@
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+import re
 from threading import Lock
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,9 +32,30 @@ def _enforce_rate_limit(origin: str) -> None:
         requests.append(now)
 
 
+def _header_code(value: str | None, limit: int) -> str | None:
+    normalized = (value or "").strip().upper()
+    if 1 <= len(normalized) <= limit and re.fullmatch(r"[A-Z0-9-]+", normalized):
+        return normalized
+    return None
+
+
+def _estimated_region(request: Request) -> tuple[str | None, str | None]:
+    """Read coarse location only from explicitly trusted hosting-edge headers."""
+    proxy = settings.geolocation_proxy.casefold().strip()
+    if proxy == "vercel":
+        return (
+            _header_code(request.headers.get("x-vercel-ip-country"), 2),
+            _header_code(request.headers.get("x-vercel-ip-country-region"), 8),
+        )
+    if proxy == "cloudflare":
+        return _header_code(request.headers.get("cf-ipcountry"), 2), None
+    return None, None
+
+
 @router.post("/collect", response_model=CollectorResponse, status_code=status.HTTP_202_ACCEPTED)
 def collect_event(
     payload: CollectorEvent,
+    request: Request,
     origin: str | None = Header(default=None),
     session: Session = Depends(get_database_session),
 ) -> CollectorResponse:
@@ -48,6 +70,7 @@ def collect_event(
     if existing is not None:
         return CollectorResponse(duplicate=True)
 
+    country_code, region_code = _estimated_region(request)
     session.add(
         PortfolioEvent(
             id=str(payload.event_id),
@@ -55,6 +78,12 @@ def collect_event(
             session_id=str(payload.session_id),
             event_name=payload.event_name,
             path=payload.path,
+            device_type=payload.device_type,
+            browser_name=payload.browser_name,
+            os_name=payload.os_name,
+            country_code=country_code,
+            region_code=region_code,
+            duration_ms=payload.duration_ms,
             created_at=datetime.now(timezone.utc),
         )
     )

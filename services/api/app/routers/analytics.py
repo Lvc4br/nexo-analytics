@@ -16,10 +16,12 @@ from app.models import PortfolioEvent
 from app.routers.auth import require_user
 from app.schemas.analytics import (
     AnalyticsComparison,
+    AnalyticsBreakdown,
     AnalyticsEvent,
     AnalyticsMetrics,
     AnalyticsOverview,
     AnalyticsSources,
+    AnalyticsTimeMetrics,
     PopularPage,
     TrafficDay,
 )
@@ -81,6 +83,32 @@ def _event_rows(rows: list[dict[str, Any]], source: str = "vercel") -> list[Anal
     return sorted(events, key=lambda event: event.count, reverse=True)
 
 
+def _duration_stats(values: list[int]) -> tuple[float | None, float | None, float | None]:
+    durations = [max(0, value) for value in values]
+    if not durations:
+        return None, None, None
+    return (
+        round(sum(durations) / len(durations) / 1000, 1),
+        round(min(durations) / 1000, 1),
+        round(max(durations) / 1000, 1),
+    )
+
+
+def _vercel_breakdown(rows: list[dict[str, Any]], dimension: str) -> list[AnalyticsBreakdown]:
+    result: list[AnalyticsBreakdown] = []
+    for row in rows:
+        name = row.get(dimension)
+        if not isinstance(name, str) or not name.strip():
+            continue
+        result.append(AnalyticsBreakdown(
+            name=name,
+            pageviews=_number(row, "pageviews", "visits", "count"),
+            visitors=_number(row, "visitors", "uniqueVisitors", "unique_visitors"),
+            source="vercel",
+        ))
+    return sorted(result, key=lambda item: item.pageviews, reverse=True)
+
+
 def _make_insights(
     *,
     pageviews: int,
@@ -135,19 +163,21 @@ async def _load_vercel(
     today: date,
     previous_start: date,
     previous_end: date,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]] | None:
+) -> tuple[list[dict[str, Any]], ...] | None:
     if not settings.vercel_configured:
         return None
 
     timeout = httpx.Timeout(12.0, connect=5.0)
 
-    async def optional_event_aggregate(
+    async def optional_aggregate(
         client: VercelAnalyticsClient,
+        resource: str,
+        dimension: str,
         start: date,
         end: date,
     ) -> list[dict[str, Any]]:
         try:
-            return await client.aggregate("events", dimensions=["eventName"], since=start, until=end, limit=100)
+            return await client.aggregate(resource, dimensions=[dimension], since=start, until=end, limit=100)
         except VercelAPIError:
             return []
 
@@ -158,7 +188,10 @@ async def _load_vercel(
                 vercel.aggregate("visits", dimensions=["day"], since=period_start, until=today, limit=100),
                 vercel.aggregate("visits", dimensions=["day"], since=previous_start, until=previous_end, limit=100),
                 vercel.aggregate("visits", dimensions=["requestPath"], since=period_start, until=today, limit=100),
-                optional_event_aggregate(vercel, period_start, today),
+                optional_aggregate(vercel, "events", "eventName", period_start, today),
+                optional_aggregate(vercel, "visits", "country", period_start, today),
+                optional_aggregate(vercel, "visits", "deviceType", period_start, today),
+                optional_aggregate(vercel, "visits", "browserName", period_start, today),
                 return_exceptions=True,
             )
             if any(isinstance(result, Exception) for result in results[:3]):
@@ -205,37 +238,69 @@ async def overview(
     traffic_by_date: dict[date, dict[str, int]] = defaultdict(lambda: {"pageviews": 0, "visitors": 0})
     page_counts: dict[str, dict[str, Any]] = defaultdict(lambda: {"pageviews": 0, "sessions": set()})
     custom_events: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "sessions": set()})
+    profile_counts: dict[str, dict[str, dict[str, Any]]] = defaultdict(
+        lambda: defaultdict(lambda: {"pageviews": 0, "sessions": set()})
+    )
+    page_durations: dict[str, list[int]] = defaultdict(list)
+    session_pageviews: dict[str, int] = defaultdict(int)
+    session_durations: dict[str, int] = defaultdict(int)
     nexo_sessions_by_day: dict[date, set[str]] = defaultdict(set)
     current_session_ids: set[str] = set()
     previous_session_ids: set[str] = set()
     engaged_session_ids: set[str] = set()
     nexo_pageviews = 0
     previous_nexo_pageviews = 0
+    page_duration_values: list[int] = []
 
     for row in nexo_rows:
         event_date = _event_date(row)
         if period_start <= event_date <= today:
-            current_session_ids.add(row.session_id)
-            nexo_sessions_by_day[event_date].add(row.session_id)
             if row.event_name == "page_view":
+                current_session_ids.add(row.session_id)
+                nexo_sessions_by_day[event_date].add(row.session_id)
                 nexo_pageviews += 1
+                session_pageviews[row.session_id] += 1
                 traffic_by_date[event_date]["pageviews"] += 1
                 page_counts[row.path]["pageviews"] += 1
                 page_counts[row.path]["sessions"].add(row.session_id)
+                for attribute in ("device_type", "browser_name", "os_name"):
+                    value = getattr(row, attribute, None)
+                    if value and value != "unknown":
+                        profile_counts[attribute][value]["pageviews"] += 1
+                        profile_counts[attribute][value]["sessions"].add(row.session_id)
+                if row.device_type and row.device_type != "unknown":
+                    if row.browser_name and row.browser_name != "unknown" and row.os_name and row.os_name != "unknown":
+                        profile_counts["_device_profiles"][f"{row.device_type}|{row.browser_name}|{row.os_name}"]["pageviews"] += 1
+                        profile_counts["_device_profiles"][f"{row.device_type}|{row.browser_name}|{row.os_name}"]["sessions"].add(row.session_id)
+                if row.country_code:
+                    location = f"{row.country_code}-{row.region_code}" if row.region_code else row.country_code
+                    profile_counts["country_code"][location]["pageviews"] += 1
+                    profile_counts["country_code"][location]["sessions"].add(row.session_id)
+            elif row.event_name == "page_duration" and row.duration_ms is not None:
+                duration = max(0, row.duration_ms)
+                page_duration_values.append(duration)
+                page_durations[row.path].append(duration)
+                session_durations[row.session_id] += duration
             else:
                 custom_events[row.event_name]["count"] += 1
                 custom_events[row.event_name]["sessions"].add(row.session_id)
                 engaged_session_ids.add(row.session_id)
         elif previous_start <= event_date <= previous_end:
-            previous_session_ids.add(row.session_id)
             if row.event_name == "page_view":
+                previous_session_ids.add(row.session_id)
                 previous_nexo_pageviews += 1
+
     for event_date, sessions in nexo_sessions_by_day.items():
         traffic_by_date[event_date]["visitors"] = len(sessions)
+    engaged_session_ids.intersection_update(current_session_ids)
 
     traffic_dates = [period_start + timedelta(days=offset) for offset in range(days)]
+    vercel_country_rows: list[dict[str, Any]] = []
+    vercel_device_rows: list[dict[str, Any]] = []
+    vercel_browser_rows: list[dict[str, Any]] = []
     if vercel_connected:
-        traffic_rows, previous_traffic_rows, page_rows, vercel_event_rows = vercel_data
+        (traffic_rows, previous_traffic_rows, page_rows, vercel_event_rows,
+         vercel_country_rows, vercel_device_rows, vercel_browser_rows) = vercel_data
         vercel_traffic_by_date: dict[date, dict[str, int]] = {}
         for row in traffic_rows:
             row_date = _date_from_row(row)
@@ -262,7 +327,7 @@ async def overview(
                 pageviews=pageviews,
                 visitors=_number(row, "visitors", "uniqueVisitors", "unique_visitors"),
                 share_percent=round((pageviews / current_pageviews) * 100, 1) if current_pageviews else 0,
-        ))
+            ))
         vercel_events = _event_rows(vercel_event_rows)
         vercel_event_status = "connected" if vercel_events or vercel_event_rows else "unavailable"
         pageviews_source = "vercel"
@@ -286,6 +351,52 @@ async def overview(
         pageviews_source = "nexo"
         visitors_source = "nexo"
 
+    def nexo_breakdown(attribute: str) -> list[AnalyticsBreakdown]:
+        counts = profile_counts[attribute]
+        return sorted(
+            [AnalyticsBreakdown(name=name, pageviews=value["pageviews"], visitors=len(value["sessions"]), source="nexo")
+             for name, value in counts.items()],
+            key=lambda item: item.pageviews,
+            reverse=True,
+        )
+
+    devices = _vercel_breakdown(vercel_device_rows, "deviceType") if vercel_connected else []
+    browsers = _vercel_breakdown(vercel_browser_rows, "browserName") if vercel_connected else []
+    regions = _vercel_breakdown(vercel_country_rows, "country") if vercel_connected else []
+    if not devices:
+        devices = nexo_breakdown("device_type")
+    if not browsers:
+        browsers = nexo_breakdown("browser_name")
+    operating_systems = nexo_breakdown("os_name")
+    if not regions:
+        regions = nexo_breakdown("country_code")
+
+    page_averages: dict[str, tuple[float | None, float | None, float | None]] = {
+        path: _duration_stats(values) for path, values in page_durations.items()
+    }
+    for page in pages:
+        average, minimum, maximum = page_averages.get(page.path, (None, None, None))
+        page.average_time_seconds = average
+        page.minimum_time_seconds = minimum
+        page.maximum_time_seconds = maximum
+
+    average_page, minimum_page, maximum_page = _duration_stats(page_duration_values)
+    session_duration_values = list(session_durations.values())
+    average_session, minimum_session, maximum_session = _duration_stats(session_duration_values)
+    time_metrics = AnalyticsTimeMetrics(
+        page_samples=len(page_duration_values),
+        average_page_seconds=average_page,
+        minimum_page_seconds=minimum_page,
+        maximum_page_seconds=maximum_page,
+        measured_sessions=len(session_duration_values),
+        average_session_seconds=average_session,
+        minimum_session_seconds=minimum_session,
+        maximum_session_seconds=maximum_session,
+    )
+    bounce_sessions = sum(1 for count in session_pageviews.values() if count == 1)
+    bounce_rate = round((bounce_sessions / len(session_pageviews)) * 100, 1) if session_pageviews else 0.0
+    device_profile_count = len(profile_counts["_device_profiles"])
+
     traffic = [TrafficDay(date=day, **traffic_by_date.get(day, {"pageviews": 0, "visitors": 0})) for day in traffic_dates]
     pages.sort(key=lambda page: page.pageviews, reverse=True)
     events = [
@@ -294,10 +405,32 @@ async def overview(
     ]
     events.sort(key=lambda event: event.count, reverse=True)
     event_total = sum(event.count for event in events)
-    previous_event_total = sum(1 for row in nexo_rows if previous_start <= _event_date(row) <= previous_end and row.event_name != "page_view")
-    previous_events_available = any(previous_start <= _event_date(row) <= previous_end and row.event_name != "page_view" for row in nexo_rows)
+    previous_event_total = sum(
+        1 for row in nexo_rows
+        if previous_start <= _event_date(row) <= previous_end and row.event_name not in {"page_view", "page_duration"}
+    )
+    previous_events_available = any(
+        previous_start <= _event_date(row) <= previous_end and row.event_name not in {"page_view", "page_duration"}
+        for row in nexo_rows
+    )
     pageviews_change = _percent_change(current_pageviews, previous_pageviews)
     engagement_percent = round((len(engaged_session_ids) / len(current_session_ids)) * 100, 1) if current_session_ids else 0.0
+    insights = _make_insights(
+        pageviews=current_pageviews,
+        previous_pageviews=previous_pageviews,
+        visitors=current_visitors,
+        change=pageviews_change,
+        pages=pages,
+        events=events,
+        pageviews_source=pageviews_source,
+        engagement_percent=engagement_percent,
+        vercel_pageviews=current_pageviews if vercel_connected else None,
+        nexo_pageviews=nexo_pageviews,
+    )
+    if average_session is not None:
+        insights.append(f"O tempo ativo mÃ©dio por sessÃ£o Nexo foi de {_pt_number(average_session)} segundos.")
+    if session_pageviews:
+        insights.append(f"A taxa estimada de sessÃµes com uma Ãºnica pÃ¡gina foi de {_pt_number(bounce_rate)}%.")
 
     return AnalyticsOverview(
         project_id=settings.vercel_project_id if vercel_connected else settings.portfolio_site_id,
@@ -322,6 +455,8 @@ async def overview(
             nexo_sessions=len(current_session_ids),
             engaged_sessions=len(engaged_session_ids),
             engagement_percent=engagement_percent,
+            bounce_rate_percent=bounce_rate,
+            device_profile_count=device_profile_count,
         ),
         comparison=AnalyticsComparison(
             pageviews_percent=pageviews_change,
@@ -332,16 +467,10 @@ async def overview(
         popular_pages=pages,
         events=events,
         vercel_events=vercel_events,
-        insights=_make_insights(
-            pageviews=current_pageviews,
-            previous_pageviews=previous_pageviews,
-            visitors=current_visitors,
-            change=pageviews_change,
-            pages=pages,
-            events=events,
-            pageviews_source=pageviews_source,
-            engagement_percent=engagement_percent,
-            vercel_pageviews=current_pageviews if vercel_connected else None,
-            nexo_pageviews=nexo_pageviews,
-        ),
+        devices=devices,
+        browsers=browsers,
+        operating_systems=operating_systems,
+        regions=regions,
+        time_metrics=time_metrics,
+        insights=insights,
     )

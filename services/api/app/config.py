@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     portfolio_allowed_origins: str = "https://luca-toniolo.vercel.app"
     tracker_rate_limit_per_minute: int = 120
     tracker_event_retention_days: int = 365
+    geolocation_proxy: str = "none"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

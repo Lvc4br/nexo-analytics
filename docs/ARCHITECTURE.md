@@ -4,7 +4,7 @@
 
 - **Dashboard** (`apps/dashboard`): React JSX e Vite. Solicita relatórios protegidos ao backend e mostra estado das fontes, métricas e insights.
 - **API** (`services/api`): Python/FastAPI. Autentica o administrador, recebe eventos, persiste a coleta própria, consulta a API Web Analytics da Vercel e calcula o relatório.
-- **Tracker** (`packages/tracker-sdk`): JavaScript ESM sem dependências. Coleta pageviews e interações permitidas no navegador do portfólio.
+- **Tracker** (`packages/tracker-sdk`): JavaScript ESM sem dependências. Coleta pageviews, categorias técnicas resumidas, tempo ativo e interações permitidas no navegador do portfólio.
 - **Banco**: SQLite local para desenvolvimento; PostgreSQL persistente obrigatório em produção.
 
 O tracker fica no código do site monitorado e aponta para a API Nexo. Essa separação deixa a coleta própria independente do provedor que hospeda o portfólio. A consulta da Vercel é um adaptador opcional de agregados, não uma dependência do coletor.
@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 1. O tracker cria um `event_id` e mantém um `session_id` aleatório em `sessionStorage`.
-2. Envia `event_name`, `path`, `site_id`, `session_id` e `event_id` por HTTPS.
+2. Envia `event_name`, `path`, `site_id`, `session_id`, categorias de dispositivo/navegador/sistema e, ao finalizar uma página, sua duração ativa por HTTPS.
 3. O coletor confere origem permitida, ID do site e formato, aplica limite local, remove duplicatas e persiste o evento.
 4. A consulta autenticada agrega eventos Nexo para o período escolhido.
 5. Se as credenciais Vercel existirem e a API estiver acessível, o backend usa os pageviews e visitantes diários da Vercel como fonte principal; se a chamada falhar, usa o tracker como fallback.
@@ -35,7 +35,9 @@ flowchart LR
 
 O tracker reconhece pageviews iniciais e transições de `history.pushState`, `history.replaceState` e `popstate`. Eventos profissionais como `resume_open` e `contact_click` são opt-in pelo código do portfólio. O dashboard calcula taxa de engajamento como sessões Nexo com ao menos um evento personalizado dividido por sessões Nexo do período.
 
-As sessões são uma estimativa baseada em armazenamento por aba; não são pessoas únicas e não podem ser associadas à agregação Vercel. Uma sessão pode conter mais de uma página; o ID não é persistente entre abas independentes nem identifica uma pessoa.
+As sessões são uma estimativa baseada em armazenamento por aba; não são pessoas únicas e não podem ser associadas à agregação Vercel. Uma sessão pode conter mais de uma página; o ID não é persistente entre abas independentes nem identifica uma pessoa. Categorias de dispositivo/navegador/sistema descrevem famílias técnicas e não contam aparelhos físicos únicos. O tempo Nexo mede quanto a página ficou visível na aba; não prova atenção, pausa ao ocultar e é enviado ao trocar de rota ou sair/fechar.
+
+As métricas de país/região são aproximações: podem vir dos agregados Vercel ou de cabeçalhos do proxy confiável da API, ativado por `GEOLOCATION_PROXY`. Com a API local e sem Vercel conectada, essa localização não fica disponível. A coleta não envia nem persiste IP na tabela de eventos.
 
 ## Falha e portabilidade
 
@@ -52,4 +54,4 @@ Os dados agregados da Vercel não são importados automaticamente para o banco N
 - Um administrador configurado por ambiente.
 - O limite de eventos em memória é local a um processo; produção distribuída precisa de limitação compartilhada no gateway.
 - O schema é inicializado com `create_all`; alterações futuras que exigirem migração devem adicionar ferramenta de migrations antes de evolução incompatível.
-- Não há geolocalização, identificação de empresas, visitantes individuais ou rastreamento de conteúdo de página.
+- Não há geolocalização precisa, identificação de empresas, visitantes individuais ou rastreamento de conteúdo de página.

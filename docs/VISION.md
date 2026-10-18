@@ -30,12 +30,11 @@ O primeiro cenário é o uso pelo proprietário de vários sites pessoais e prof
 - Endpoint de coleta validado.
 - PostgreSQL e migrações.
 - Dashboard com visualizações, sessões estimadas e páginas populares.
+- Eventos personalizados, categorias técnicas, tempo ativo de página/sessão e comparações agregadas.
+- País/região aproximados a partir de fontes agregadas ou proxy confiável, sem coordenadas ou IP armazenado pelo Nexo.
 - Configurações mínimas de retenção e privacidade.
 
 ### Pós-MVP
-- Eventos personalizados com esquemas permitidos.
-- Dispositivos, navegador e sistema operacional em categorias.
-- Geolocalização aproximada por IP, somente quando necessária e justificada.
 - Exportação e exclusão de dados.
 - Métricas agregadas e relatórios comparativos.
 - Integrações externas, se houver APIs e permissões adequadas.

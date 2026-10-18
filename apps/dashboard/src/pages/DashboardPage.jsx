@@ -23,6 +23,56 @@ function pageTitle(path) {
   return path;
 }
 
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return "—";
+  const value = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(value / 60);
+  const remaining = value % 60;
+  return minutes ? `${minutes} min ${remaining} s` : `${remaining} s`;
+}
+
+function breakdownLabel(name, kind) {
+  const labels = {
+    desktop: "Computador", mobile: "Celular", tablet: "Tablet",
+    "samsung internet": "Samsung Internet", chrome: "Chrome", chromium: "Chromium",
+    firefox: "Firefox", safari: "Safari", edge: "Edge", opera: "Opera",
+    windows: "Windows", macos: "macOS", ios: "iOS", android: "Android",
+    linux: "Linux", chromeos: "ChromeOS", unknown: "Não identificado",
+  };
+  if (kind === "region") {
+    const [country, region] = name.split("-");
+    try {
+      const countryName = new Intl.DisplayNames(["pt-BR"], { type: "region" }).of(country) || country;
+      return region ? `${countryName} · ${region}` : countryName;
+    } catch {
+      return name;
+    }
+  }
+  return labels[name.toLowerCase()] || name;
+}
+
+function BreakdownPanel({ title, kind, items, emptyMessage }) {
+  const source = items[0]?.source;
+  return (
+    <article className="panel breakdown-panel">
+      <div className="panel-heading compact-heading">
+        <div><span className="panel-overline">PÚBLICO</span><h2>{title}</h2></div>
+        <span className="small-count">{source === "vercel" ? "VERCEL" : source === "nexo" ? "NEXO" : "SEM DADOS"}</span>
+      </div>
+      {items.length ? <div className="breakdown-list">
+        {items.slice(0, 6).map((item) => (
+          <div className="breakdown-row" key={item.name}>
+            <span className="breakdown-name">{breakdownLabel(item.name, kind)}</span>
+            <span className="breakdown-count"><strong>{numberFormat.format(item.pageviews)}</strong><small>{numberFormat.format(item.visitors)} {source === "vercel" ? "visitantes agregados" : "sessões"}</small></span>
+          </div>
+        ))}
+      </div> : <p className="breakdown-empty">{emptyMessage}</p>}
+      {kind === "device" && <p className="breakdown-note">No Nexo, a contagem representa sessões por categoria; ela não identifica aparelhos físicos nem deduplica o mesmo aparelho entre sessões.</p>}
+      {kind === "region" && <p className="breakdown-note">Localização aproximada por país e, quando disponível no proxy confiável, região. Não é uma localização precisa.</p>}
+    </article>
+  );
+}
+
 function chartGeometry(values) {
   const width = 800;
   const height = 236;
@@ -86,6 +136,10 @@ export default function DashboardPage() {
     { label: overview.metrics.visitors_source === "vercel" ? "Visitantes por dia" : "Sessões Nexo", value: numberFormat.format(overview.metrics.visitors), change: overview.comparison.visitors_percent, icon: "activity", note: overview.metrics.visitors_source === "vercel" ? "soma diária informada pela Vercel" : "identificador temporário por aba" },
     { label: "Visualizações / visitante ou sessão", value: decimalFormat.format(overview.metrics.pageviews_per_visitor), change: null, icon: "layers", note: "média na fonte principal" },
     { label: "Sessões com interação", value: `${decimalFormat.format(overview.metrics.engagement_percent)}%`, change: null, icon: "sparkle", note: `${numberFormat.format(overview.metrics.engaged_sessions)} sessões com evento Nexo` },
+    { label: "Tempo médio na página", value: formatDuration(overview.time_metrics.average_page_seconds), change: null, icon: "clock", note: `${numberFormat.format(overview.time_metrics.page_samples)} tempos medidos pelo Nexo` },
+    { label: "Tempo médio da sessão", value: formatDuration(overview.time_metrics.average_session_seconds), change: null, icon: "clock", note: `${numberFormat.format(overview.time_metrics.measured_sessions)} sessões medidas pelo Nexo` },
+    { label: "Taxa de uma página", value: `${decimalFormat.format(overview.metrics.bounce_rate_percent)}%`, change: null, icon: "activity", note: "sessões Nexo com um único pageview" },
+    { label: "Combinações técnicas", value: numberFormat.format(overview.metrics.device_profile_count), change: null, icon: "layers", note: "tipo + navegador + sistema; não identifica aparelhos" },
   ] : [];
   const combinedEvents = overview ? [...overview.events, ...overview.vercel_events].sort((a, b) => b.count - a.count) : [];
   const portfolioUrl = `https://${overview?.domain ?? "luca-toniolo.vercel.app"}`;
@@ -211,15 +265,46 @@ export default function DashboardPage() {
               </article>
             </section>
 
+            <section className="demographics-grid" aria-label="Dispositivos e localização estimada">
+              <BreakdownPanel title="Dispositivos" kind="device" items={overview.devices} emptyMessage="Aguardando dados de dispositivo." />
+              <BreakdownPanel title="Navegadores" kind="browser" items={overview.browsers} emptyMessage="Aguardando dados de navegador." />
+              <BreakdownPanel title="Sistemas operacionais" kind="os" items={overview.operating_systems} emptyMessage="Aguardando dados de sistema." />
+              <BreakdownPanel title="Regiões estimadas" kind="region" items={overview.regions} emptyMessage="Localização indisponível nesta fonte." />
+            </section>
+
+            <section className="time-summary-grid" aria-label="Tempos de navegação">
+              <article className="panel time-summary-panel">
+                <div className="panel-heading compact-heading"><div><span className="panel-overline">TEMPO ATIVO · NEXO</span><h2>Tempo nas páginas</h2></div><Icon name="clock" size={18} /></div>
+                <div className="time-stats">
+                  <div><span>Média</span><strong>{formatDuration(overview.time_metrics.average_page_seconds)}</strong></div>
+                  <div><span>Mínimo</span><strong>{formatDuration(overview.time_metrics.minimum_page_seconds)}</strong></div>
+                  <div><span>Máximo</span><strong>{formatDuration(overview.time_metrics.maximum_page_seconds)}</strong></div>
+                  <div><span>Amostras</span><strong>{numberFormat.format(overview.time_metrics.page_samples)}</strong></div>
+                </div>
+                <p className="time-summary-note">Conta o tempo em que a página ficou visível na aba. Tempo em segundo plano é pausado.</p>
+              </article>
+              <article className="panel time-summary-panel">
+                <div className="panel-heading compact-heading"><div><span className="panel-overline">SESSÕES · NEXO</span><h2>Duração das sessões</h2></div><Icon name="activity" size={18} /></div>
+                <div className="time-stats">
+                  <div><span>Média</span><strong>{formatDuration(overview.time_metrics.average_session_seconds)}</strong></div>
+                  <div><span>Mínimo</span><strong>{formatDuration(overview.time_metrics.minimum_session_seconds)}</strong></div>
+                  <div><span>Máximo</span><strong>{formatDuration(overview.time_metrics.maximum_session_seconds)}</strong></div>
+                  <div><span>Amostras</span><strong>{numberFormat.format(overview.time_metrics.measured_sessions)}</strong></div>
+                </div>
+                <p className="time-summary-note">Uma sessão é uma aba do navegador; não equivale necessariamente a uma pessoa ou aparelho.</p>
+              </article>
+            </section>
+
             <section className="bottom-grid">
               <article className="panel pages-panel">
                 <div className="panel-heading compact-heading"><div><span className="panel-overline">CONTEÚDO</span><h2>Páginas populares</h2></div><span className="small-count">{days} DIAS</span></div>
                 {overview.popular_pages.length > 0 ? <div className="pages-table" role="table" aria-label="Páginas populares">
-                  <div className="pages-table-head" role="row"><span role="columnheader">PÁGINA</span><span role="columnheader">VISUALIZAÇÕES</span><span role="columnheader">DO TOTAL</span></div>
+                  <div className="pages-table-head" role="row"><span role="columnheader">PÁGINA</span><span role="columnheader">VIEWS</span><span role="columnheader">TEMPO MÉDIO</span><span role="columnheader">DO TOTAL</span></div>
                   {overview.popular_pages.map((page) => (
                     <div className="pages-table-row" role="row" key={page.path}>
                       <span className="page-cell" role="cell"><strong>{pageTitle(page.path)}</strong><small>{page.path}</small></span>
                       <span role="cell">{numberFormat.format(page.pageviews)}</span>
+                      <span className="page-duration-cell" role="cell"><strong>{formatDuration(page.average_time_seconds)}</strong><small>{formatDuration(page.minimum_time_seconds)} – {formatDuration(page.maximum_time_seconds)}</small></span>
                       <span className="share-cell" role="cell">{decimalFormat.format(page.share_percent)}%</span>
                     </div>
                   ))}

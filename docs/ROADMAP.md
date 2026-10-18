@@ -7,6 +7,9 @@
 - [x] Consulta agregada da Vercel Web Analytics.
 - [x] Tracker JavaScript próprio, endpoint de coleta e persistência SQLite local/PostgreSQL para produção.
 - [x] Agregação Nexo, fallback da Vercel e pageviews sem dupla contagem.
+- [x] Categorias de dispositivo, navegador e sistema operacional, com contagem por sessão.
+- [x] Tempo ativo de página/sessão, médias, extremos, taxa estimada de uma página e páginas populares.
+- [x] País/região aproximados via agregado Vercel ou cabeçalho de proxy configurado.
 - [x] Validação de origem/site, deduplicação e testes da API/SDK.
 - [x] Guia para instalar o tracker em um repositório separado.
 
@@ -26,4 +29,4 @@
 - [ ] Exportação e exclusão de dados e controles de preferências quando necessários.
 - [ ] Publicação do tracker como pacote npm para instalar sem copiar o arquivo entre repositórios.
 
-Não priorizar geolocalização, filas ou identificação de visitantes antes de isolamento, coleta confiável, retenção e transparência.
+Não adicionar precisão geográfica, filas ou identificação persistente de visitantes antes de isolamento, coleta confiável, retenção e transparência.

@@ -34,9 +34,13 @@ No LV_Portfolio, leia `endpoint` de `VITE_NEXO_COLLECT_URL` e `siteId` de `VITE_
 Por padrão, o SDK pausa a coleta quando `navigator.doNotTrack === "1"`, quando `window.__nexoAnalyticsDisabled` é `true`, quando `enabled` é `false` ou quando executa em localhost sem `trackDevelopment`.
 Se `endpoint` ou `siteId` estiver ausente, ele fica inativo sem interromper o site.
 
-## Payload
+## Payload e métricas próprias
 
-O navegador envia `event_id`, `site_id`, `session_id`, `event_name` e `path`. O `session_id` aleatório é mantido em `sessionStorage`; o evento usa um ID aleatório para permitir deduplicação. Não há cookie persistente, fingerprinting, propriedades livres, IP, referenciador, query string, fragmento ou conteúdo de formulário no payload.
+O navegador envia `event_id`, `site_id`, `session_id`, `event_name`, `path` e categorias resumidas `device_type`, `browser_name` e `os_name`, classificadas localmente a partir do user-agent. O user-agent completo não é enviado. `session_id` aleatório é mantido em `sessionStorage`; o evento usa outro ID aleatório para permitir deduplicação. Não há cookie persistente, fingerprinting, propriedades livres, IP, referenciador, query string, fragmento ou conteúdo de formulário no payload.
+
+Pageviews geram `page_view`. Para calcular o tempo ativo, o SDK mede com um relógio monotônico enquanto a página está visível e pausa quando a aba fica em segundo plano. Ao mudar de rota, sair da página ou fechar a aba, envia um evento interno `page_duration` com `duration_ms`. Esse nome é reservado; não deve ser enviado por `track()`. A amostra da última página só aparece depois que o navegador envia esse evento, então uma página ainda aberta pode não ter duração contabilizada.
+
+As categorias técnicas e contagens de sessões não são uma contagem de aparelhos físicos únicos. O SDK não guarda um identificador persistente para reconhecer o mesmo aparelho em sessões diferentes. Região não vem do navegador: pode ser derivada pela API de cabeçalhos de um proxy confiável configurado no servidor ou vir do agregado da Vercel.
 
 O coletor valida o payload novamente. `Origin` ajuda a limitar as origens aceitas, mas é público e pode ser falsificado fora do navegador; produção deve aplicar rate limiting compartilhado no gateway além do limite local em memória.
 

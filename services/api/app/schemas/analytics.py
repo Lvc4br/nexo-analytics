@@ -15,6 +15,8 @@ class AnalyticsMetrics(BaseModel):
     nexo_sessions: int
     engaged_sessions: int
     engagement_percent: float
+    bounce_rate_percent: float
+    device_profile_count: int
 
 
 class AnalyticsComparison(BaseModel):
@@ -34,6 +36,27 @@ class PopularPage(BaseModel):
     pageviews: int
     visitors: int
     share_percent: float
+    average_time_seconds: float | None = None
+    minimum_time_seconds: float | None = None
+    maximum_time_seconds: float | None = None
+
+
+class AnalyticsBreakdown(BaseModel):
+    name: str
+    pageviews: int
+    visitors: int
+    source: str
+
+
+class AnalyticsTimeMetrics(BaseModel):
+    page_samples: int
+    average_page_seconds: float | None
+    minimum_page_seconds: float | None
+    maximum_page_seconds: float | None
+    measured_sessions: int
+    average_session_seconds: float | None
+    minimum_session_seconds: float | None
+    maximum_session_seconds: float | None
 
 
 class AnalyticsEvent(BaseModel):
@@ -63,4 +86,9 @@ class AnalyticsOverview(BaseModel):
     popular_pages: list[PopularPage]
     events: list[AnalyticsEvent]
     vercel_events: list[AnalyticsEvent]
+    devices: list[AnalyticsBreakdown]
+    browsers: list[AnalyticsBreakdown]
+    operating_systems: list[AnalyticsBreakdown]
+    regions: list[AnalyticsBreakdown]
+    time_metrics: AnalyticsTimeMetrics
     insights: list[str]

@@ -11,9 +11,15 @@ A tabela `portfolio_events` é criada pelo SQLAlchemy no startup. SQLite local f
 | `session_id` | UUID em texto, indexada junto do site | Agrupa eventos nesta sessão/aba do navegador. |
 | `event_name` | string até 80 caracteres | `page_view` ou interação curta como `contact_click`. |
 | `path` | string até 300 caracteres | Caminho sem query string e fragmento. |
+| `device_type` | categoria até 16 caracteres | Tipo aproximado, como desktop, celular ou tablet; derivado no navegador. |
+| `browser_name` | categoria até 40 caracteres | Família do navegador; não armazena o user-agent completo. |
+| `os_name` | categoria até 24 caracteres | Família do sistema operacional. |
+| `country_code` | código até 2 caracteres | País aproximado, somente se obtido de um proxy confiável configurado. |
+| `region_code` | código até 8 caracteres | Região administrativa ampla, quando o proxy configurado fornece esse dado. |
+| `duration_ms` | inteiro opcional | Duração ativa da página no evento interno `page_duration`. |
 | `created_at` | timestamp UTC | Horário atribuído pelo servidor na recepção. |
 
-Não são armazenados IP, `Referer`, propriedades livres, conteúdo de formulário, dispositivo ou geolocalização. Eventos são removidos quando a API inicia e encontram-se além de `TRACKER_EVENT_RETENTION_DAYS`; veja o limite operacional de limpeza em [docs/PRIVACY_LGPD.md](./PRIVACY_LGPD.md).
+Eventos de versões antigas continuam sem preencher os novos campos; a API adiciona as colunas ausentes no startup. Não são armazenados IP, `Referer`, propriedades livres, conteúdo de formulário ou user-agent bruto. A localização é apenas um país/região aproximado de cabeçalho de proxy confiável, nunca coordenadas. Eventos são removidos quando a API inicia e encontram-se além de `TRACKER_EVENT_RETENTION_DAYS`; veja o limite operacional de limpeza em [docs/PRIVACY_LGPD.md](./PRIVACY_LGPD.md).
 
 ## Dados fora do banco Nexo
 

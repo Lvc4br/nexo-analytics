@@ -2,7 +2,7 @@ from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, delete
+from sqlalchemy import Engine, create_engine, delete, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -51,6 +51,20 @@ def get_database_session() -> Generator[Session, None, None]:
 
 def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
+    # Add analytics fields to databases created by older Nexo versions.
+    additions = {
+        "device_type": "VARCHAR(16)",
+        "browser_name": "VARCHAR(40)",
+        "os_name": "VARCHAR(24)",
+        "country_code": "VARCHAR(2)",
+        "region_code": "VARCHAR(8)",
+        "duration_ms": "INTEGER",
+    }
+    with engine.begin() as connection:
+        existing = {column["name"] for column in inspect(connection).get_columns("portfolio_events")}
+        for name, column_type in additions.items():
+            if name not in existing:
+                connection.execute(text(f"ALTER TABLE portfolio_events ADD COLUMN {name} {column_type}"))
 
 
 def purge_expired_events() -> int:

@@ -1,5 +1,6 @@
 const EVENT_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/;
 const SESSION_STORAGE_KEY = "nexo:session-id";
+const RESERVED_EVENT_NAMES = new Set(["page_view", "page_duration"]);
 
 function randomId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -34,6 +35,35 @@ function currentPath() {
   return window.location.pathname || "/";
 }
 
+function deviceProfile() {
+  const userAgent = window.navigator?.userAgent?.toLowerCase() ?? "";
+  const platform = window.navigator?.platform?.toLowerCase() ?? "";
+  let deviceType = "desktop";
+  if (/ipad|tablet|kindle|silk/.test(userAgent)) deviceType = "tablet";
+  else if (/mobi|iphone|ipod|android/.test(userAgent)) deviceType = "mobile";
+
+  let browserName = "unknown";
+  if (/samsungbrowser/.test(userAgent)) browserName = "samsung internet";
+  else if (/edg\//.test(userAgent)) browserName = "edge";
+  else if (/opr\//.test(userAgent)) browserName = "opera";
+  else if (/firefox\//.test(userAgent)) browserName = "firefox";
+  else if (/crios|chrome\//.test(userAgent)) browserName = "chrome";
+  else if (/chromium\//.test(userAgent)) browserName = "chromium";
+  else if (/safari\//.test(userAgent) && !/chrome|crios|chromium/.test(userAgent)) browserName = "safari";
+  else if (userAgent) browserName = "other";
+
+  let osName = "unknown";
+  if (/iphone|ipad|ipod/.test(userAgent)) osName = "ios";
+  else if (/android/.test(userAgent)) osName = "android";
+  else if (/windows/.test(userAgent)) osName = "windows";
+  else if (/mac os|macintosh/.test(userAgent) || platform.includes("mac")) osName = "macos";
+  else if (/cros/.test(userAgent)) osName = "chromeos";
+  else if (/linux/.test(userAgent) || platform.includes("linux")) osName = "linux";
+  else if (userAgent) osName = "other";
+
+  return { device_type: deviceType, browser_name: browserName, os_name: osName };
+}
+
 export function createNexoTracker({
   endpoint,
   siteId,
@@ -48,18 +78,37 @@ export function createNexoTracker({
   const localHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
   const active = enabled && !window.__nexoAnalyticsDisabled && window.navigator.doNotTrack !== "1" && (!localHost || trackDevelopment);
   const tabSessionId = active ? sessionId() : null;
+  const profile = active ? deviceProfile() : null;
   let lastPath = "";
   let destroyed = false;
+  let activeSince = null;
+  let elapsedActiveMs = 0;
 
-  function track(eventName) {
-    if (!active || destroyed || typeof eventName !== "string" || !EVENT_NAME_PATTERN.test(eventName)) return;
-    const body = JSON.stringify({
+  function clockNow() {
+    return globalThis.performance?.now?.() ?? Date.now();
+  }
+
+  function resumePageClock() {
+    if (activeSince === null && (typeof document === "undefined" || !document.hidden)) activeSince = clockNow();
+  }
+
+  function pausePageClock() {
+    if (activeSince === null) return;
+    elapsedActiveMs += Math.max(0, clockNow() - activeSince);
+    activeSince = null;
+  }
+
+  function send(eventName, path = currentPath(), durationMs = null) {
+    if (!active || destroyed) return;
+    const body = {
       event_id: randomId(),
       site_id: siteId,
       session_id: tabSessionId,
       event_name: eventName,
-      path: currentPath(),
-    });
+      path,
+      ...profile,
+    };
+    if (durationMs !== null) body.duration_ms = Math.min(86_400_000, Math.max(0, Math.round(durationMs)));
     try {
       void fetch(endpoint, {
         method: "POST",
@@ -67,18 +116,33 @@ export function createNexoTracker({
         credentials: "omit",
         keepalive: true,
         headers: { "Content-Type": "application/json" },
-        body,
+        body: JSON.stringify(body),
       }).catch(() => {});
     } catch {
       // Analytics must never interfere with the portfolio experience.
     }
   }
 
+  function flushPageDuration(path) {
+    pausePageClock();
+    const duration = elapsedActiveMs;
+    elapsedActiveMs = 0;
+    if (duration > 0) send("page_duration", path, duration);
+  }
+
+  function track(eventName) {
+    if (typeof eventName !== "string" || !EVENT_NAME_PATTERN.test(eventName) || RESERVED_EVENT_NAMES.has(eventName)) return;
+    send(eventName);
+  }
+
   function page() {
     const path = currentPath();
     if (!active || path === lastPath) return;
+    if (lastPath) flushPageDuration(lastPath);
     lastPath = path;
-    track("page_view");
+    elapsedActiveMs = 0;
+    send("page_view", path);
+    resumePageClock();
   }
 
   function onHistoryChange() {
@@ -98,10 +162,29 @@ export function createNexoTracker({
     return result;
   }
 
+  function onVisibilityChange() {
+    if (document.hidden) pausePageClock();
+    else resumePageClock();
+  }
+
+  function onPageHide() {
+    if (lastPath) flushPageDuration(lastPath);
+  }
+
+  function onPageShow(event) {
+    if (event.persisted) {
+      lastPath = "";
+      page();
+    }
+  }
+
   if (active && autoPageViews) {
     window.history.pushState = pushState;
     window.history.replaceState = replaceState;
     window.addEventListener("popstate", onHistoryChange);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibilityChange);
     page();
   }
 
@@ -109,10 +192,14 @@ export function createNexoTracker({
     track,
     page,
     destroy() {
+      if (lastPath) flushPageDuration(lastPath);
       destroyed = true;
       if (window.history.pushState === pushState) window.history.pushState = originalPushState;
       if (window.history.replaceState === replaceState) window.history.replaceState = originalReplaceState;
       window.removeEventListener("popstate", onHistoryChange);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibilityChange);
     },
   };
 }

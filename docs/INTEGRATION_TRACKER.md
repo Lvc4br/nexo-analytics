@@ -11,11 +11,14 @@ PORTFOLIO_SITE_ID=lvc4br-lv-portfolio
 PORTFOLIO_ALLOWED_ORIGINS=http://localhost:4173,https://luca-toniolo.vercel.app
 TRACKER_RATE_LIMIT_PER_MINUTE=120
 TRACKER_EVENT_RETENTION_DAYS=365
+GEOLOCATION_PROXY=none
 ```
 
 `PORTFOLIO_ALLOWED_ORIGINS` recebe origens completas, separadas por vírgula, sem caminhos. Adicione todos os domínios de produção e preview que devem enviar dados. Reinicie a API após editar `.env`.
 
 O coletor é `POST /api/v1/collect`. Para desenvolvimento local, a base SQLite é criada automaticamente. Em produção, configure a API com uma URL pública HTTPS e PostgreSQL persistente. Não use SQLite no disco de funções serverless.
+
+`GEOLOCATION_PROXY=none` é o padrão e é adequado para desenvolvimento local. Se a própria API Nexo for hospedada atrás da Vercel, configure `GEOLOCATION_PROXY=vercel` para ler os cabeçalhos de país/região adicionados pela Vercel. Se estiver atrás do Cloudflare, use `cloudflare` para país. Só habilite o provedor que realmente está na frente da API. Isso não exige nem envia IP ao tracker. Se a API estiver local, a região dos visitantes não é inferível pela coleta própria; os dados de país da Vercel só aparecem se a integração Web Analytics também estiver configurada.
 
 ## 2. Copie o tracker ao repositório do portfólio
 
@@ -83,8 +86,12 @@ Mantenha as mesmas variáveis `VITE_NEXO_COLLECT_URL` e `VITE_NEXO_SITE_ID` apó
 ## O que é contado
 
 - `page_view`: caminho acessado; query string e fragmento da URL são removidos pelo navegador antes do envio.
+- `page_duration`: amostra interna do tempo em que a página permaneceu visível; o relógio pausa quando a aba fica oculta e o evento é enviado ao trocar de rota ou sair/fechar a página. Uma página que ainda está aberta pode não ter amostra.
 - Eventos personalizados: contagem e sessões distintas associadas a cada nome de evento.
-- Sessão: ID aleatório em `sessionStorage`, que persiste durante a sessão da aba e não identifica uma pessoa.
+- Dispositivo/navegador/sistema: famílias técnicas estimadas do user-agent; o user-agent completo não é enviado. As contagens Nexo são sessões por categoria, não dispositivos físicos únicos.
+- Sessão: ID aleatório em `sessionStorage`, que persiste durante a sessão da aba e não identifica uma pessoa nem deduplica o mesmo aparelho em sessões diferentes.
 - Engajamento: sessões Nexo com pelo menos um evento personalizado dividido pelas sessões Nexo do período.
+- Taxa de uma página: porcentagem de sessões Nexo com exatamente um pageview; não é métrica identificada de uma pessoa.
+- Região: país/região aproximados, obtidos de agregados Vercel ou dos cabeçalhos de um proxy confiável configurado no backend; API local não determina a localização.
 
 O endpoint rejeita origens fora da lista, site IDs divergentes, caminhos com query/fragmento, nomes inválidos e formatos malformados. Requisições repetidas com o mesmo ID de evento são idempotentes. O coletor não persiste IP nem cabeçalho de referência. O limite em memória ajuda em uma instância; ambientes de produção distribuídos também devem configurar limitação de taxa compartilhada no gateway.

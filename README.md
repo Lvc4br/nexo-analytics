@@ -10,7 +10,11 @@ Painel privado para combinar dados agregados do Web Analytics da Vercel com even
 - **Sem duplicidade:** pageviews da Vercel e do tracker nunca são somados. A resposta da API indica qual fonte está sendo usada.
 - **Troca de hospedagem:** depois que o tracker estiver instalado e apontando para a API Nexo, mudar a hospedagem do portfólio não muda o endpoint de coleta.
 
-O tracker envia apenas nome do evento, caminho da página sem query string ou fragmento, identificador aleatório da sessão da aba e identificador do evento. Ele não envia IP, referenciador, formulário ou dados de usuário. A configuração respeita `Do Not Track`.
+Além das métricas agregadas da Vercel, o Nexo mede duração ativa das páginas, duração de sessão, taxa estimada de saída após uma única página, páginas populares e interações instrumentadas. O tracker classifica a família do dispositivo, navegador e sistema operacional; não envia o user-agent completo nem cria uma identificação persistente de aparelho.
+
+Os números de dispositivos do Nexo são sessões por categoria técnica. O mesmo aparelho pode aparecer em sessões diferentes, e aparelhos diferentes podem compartilhar a mesma combinação; o Nexo não afirma contar aparelhos físicos únicos. Região é aproximada: pode vir do agregado de país da Vercel ou de cabeçalhos de país/região de um proxy confiável configurado na API. A API local não determina a região do visitante. O tracker respeita `Do Not Track` e não envia IP, referenciador, formulário, query string ou dados de usuário.
+
+O tempo é contado enquanto a página está visível e pausado quando fica em segundo plano; a amostra é enviada ao trocar de rota ou quando a página é encerrada. Uma página que continua aberta ainda não tem amostra de duração. Vercel e Nexo não compartilham identificadores; as métricas de uma fonte não podem ser atribuídas a uma sessão individual da outra.
 
 ## Estrutura
 
@@ -31,7 +35,7 @@ Pré-requisitos: Git, Node.js/npm e Python 3.11 ou superior.
    Copy-Item .env.example .env
    ```
 
-   Preencha `DASHBOARD_EMAIL` e as credenciais administrativas. Para ler a Vercel, configure também `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID`; elas são opcionais porque o Nexo pode funcionar apenas com o tracker próprio.
+   Preencha `DASHBOARD_EMAIL` e as credenciais administrativas. Para ler a Vercel, configure também `VERCEL_ACCESS_TOKEN` e `VERCEL_PROJECT_ID`; elas são opcionais porque o Nexo pode funcionar apenas com o tracker próprio. `GEOLOCATION_PROXY` fica `none` por padrão. Use `vercel` ou `cloudflare` somente se a própria API Nexo estiver atrás desse proxy confiável.
 
 2. Instale e prepare a API:
 
@@ -161,6 +165,8 @@ A URL da API deve ser acessível tanto pelo painel quanto pelo site do portfóli
 - A métrica “Visitantes por dia” da Vercel é a soma dos valores diários dela; não representa pessoas únicas no intervalo inteiro.
 - As sessões Nexo usam um ID temporário em `sessionStorage`, limitado à aba/sessão do navegador; não identificam uma pessoa.
 - A taxa de engajamento é a porcentagem de sessões Nexo com pelo menos uma interação personalizada.
+- Tempo mínimo, médio e máximo e taxa de uma página são calculados sobre amostras Nexo; não são fornecidos pelo agregado Vercel usado aqui.
+- As categorias de dispositivo, navegador e sistema operacional não identificam dispositivos físicos. Região é aproximada e depende da fonte indicada no painel.
 - Vercel e Nexo não compartilham identificadores; não há associação de visitas agregadas com indivíduos.
 - O coletor valida origem, site, caminho e formato e aplica um limite local em memória. Em produção, configure também rate limiting compartilhado no proxy/gateway.
 - Revise aviso de privacidade, base legal e retenção antes de operar com visitantes reais. Leia [docs/PRIVACY_LGPD.md](docs/PRIVACY_LGPD.md).

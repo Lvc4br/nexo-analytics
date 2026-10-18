@@ -4,7 +4,7 @@ A Vercel é uma das fontes do Nexo, não o coletor exclusivo. O backend Python c
 
 ## Ativar Web Analytics
 
-No projeto do portfólio na Vercel, habilite Web Analytics e confirme que os deploys de produção estão recebendo dados. A API do Nexo consulta agregados de `visits` e `events`; os valores são fornecidos pela Vercel e não identificam visitas individuais.
+No projeto do portfólio na Vercel, habilite Web Analytics e confirme que os deploys de produção estão recebendo dados. A API do Nexo consulta agregados de `visits` e `events`, incluindo dimensões de caminho, país, tipo de dispositivo e navegador quando disponíveis; esses valores são fornecidos pela Vercel e não identificam visitas individuais. Tempo ativo, sessões por aba, sistemas operacionais e interações instrumentadas vêm do tracker próprio.
 
 ## Credenciais do backend
 
@@ -27,6 +27,7 @@ Nunca adicione o token a `VITE_*`, ao frontend, ao repositório, ou às variáve
 - Se a Vercel não está configurada ou falha, pageviews e sessões Nexo viram fallback.
 - Eventos personalizados enviados diretamente ao Nexo são analisados separadamente dos eventos agregados Vercel.
 - A API nunca soma pageviews Vercel e Nexo para formar uma contagem, porque ambos podem descrever a mesma navegação.
+- O Web Analytics da Vercel pode fornecer contagens agregadas de país, dispositivo e navegador. Para país/região obtidos diretamente pela API Nexo, hospede a API atrás de um proxy compatível e ajuste `GEOLOCATION_PROXY` (`vercel` ou `cloudflare`).
 - Se desativar Web Analytics ou trocar o portfólio de hospedagem, a coleta própria continua enquanto o tracker mantiver a URL da API Nexo.
 
 Os dados Vercel têm semântica própria: visitantes são somados por dia e não equivalem a pessoas únicas no intervalo todo. IDs de sessão Nexo não são associados aos agregados Vercel.
