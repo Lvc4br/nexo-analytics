@@ -4,6 +4,18 @@ Painel privado para consultar eventos coletados pelo portfólio e, quando config
 
 ## Arquitetura
 
+## Arquitetura
+
+```mermaid
+flowchart LR
+    A[Site / browser] --> B[Tracker SDK]
+    B -->|POST /api/v1/collect| C[FastAPI]
+    C --> D[Validation and event ingestion]
+    D --> E[(SQLite local / PostgreSQL production)]
+    F[Dashboard React/Vite] -->|authenticated API requests| C
+    C -. optional integration .-> G[Vercel Web Analytics]
+```
+
 ```text
 apps/dashboard/             React + Vite: login e painel administrativo
 services/api/               FastAPI: autenticação, analytics e ingestão
