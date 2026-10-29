@@ -4,8 +4,6 @@ Painel privado para consultar eventos coletados pelo portfólio e, quando config
 
 ## Arquitetura
 
-## Arquitetura
-
 ```mermaid
 flowchart LR
     A[Site / browser] --> B[Tracker SDK]
@@ -15,6 +13,24 @@ flowchart LR
     F[Dashboard React/Vite] -->|authenticated API requests| C
     C -. optional integration .-> G[Vercel Web Analytics]
 ```
+
+### Modelo de domínio e ciclo de vida dos dados
+
+```mermaid
+flowchart TD
+    A[Site configurado por ambiente] -. identifica .-> B[Evento do portfólio]
+    C[Sessão anônima do navegador] -. agrupa .-> B
+    B --> D[Validação de schema, origem e site]
+    D --> E{Evento válido?}
+    E -- não --> F[Rejeitar]
+    E -- sim --> G[Deduplicar por event_id]
+    G --> H[(portfolio_events)]
+    H --> I[Agregações do dashboard]
+    J[Vercel Web Analytics] -. fonte externa opcional .-> I
+```
+
+O modelo persistido contém apenas `PortfolioEvent`. Site e sessão são identificadores lógicos, não tabelas de usuário/inventário. A API não mantém contas individuais de visitantes nem histórico de ações administrativas. O evento é a unidade transacional de telemetria; a retenção e minimização de dados estão descritas em `docs/DATA_MODEL.md` e `docs/PRIVACY_LGPD.md`.
+
 
 ```text
 apps/dashboard/             React + Vite: login e painel administrativo
