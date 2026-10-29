@@ -200,3 +200,41 @@ class ApiRouteTests(TestCase):
         self.assertEqual(overview["popular_pages"][0]["path"], "/")
         self.assertEqual(overview["events"][0]["name"], "contact_click")
         self.assertEqual(overview["vercel_events"][0]["name"], "contact_click")
+
+
+    def test_collector_rejects_query_strings_and_invalid_duration_contract(self):
+        invalid_path = self.collect(path="/?email=private@example.com")
+        self.assertEqual(invalid_path.status_code, 422)
+
+        payload = {
+            "event_id": str(uuid4()),
+            "site_id": "lvc4br-lv-portfolio",
+            "session_id": str(uuid4()),
+            "event_name": "page_view",
+            "path": "/",
+            "duration_ms": 500,
+        }
+        response = self.client.post(
+            "/api/v1/collect",
+            headers={"Origin": "https://luca-toniolo.vercel.app"},
+            json=payload,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_invalid_bearer_token_cannot_access_current_user(self):
+        response = self.client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": "Bearer definitely-not-a-valid-token"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_login_is_unavailable_without_admin_configuration(self):
+        with (
+            patch("app.routers.auth.settings.dashboard_email", ""),
+            patch("app.routers.auth.settings.dashboard_password_hash", ""),
+        ):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "admin@example.com", "password": "a-password"},
+            )
+        self.assertEqual(response.status_code, 503)
