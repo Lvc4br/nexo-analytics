@@ -1,5 +1,19 @@
 # Modelo de dados
 
+## Diagrama de domínio e persistência
+
+```mermaid
+flowchart TB
+    SITE[Site ID configurado] -. não é tabela .-> EVENT[PortfolioEvent]
+    SESSION[Session ID pseudônimo] -. agrupa eventos .-> EVENT
+    EVENT -->|persistido| DB[(portfolio_events)]
+    DB --> ANALYTICS[Agregações internas]
+    VERCEL[Vercel Analytics API] -. fonte externa opcional .-> DASH[Dashboard]
+    ANALYTICS --> DASH
+```
+
+**Persistido:** somente eventos `PortfolioEvent`. **Conceitos lógicos:** `site_id` e `session_id` são campos/identificadores, não entidades com tabelas próprias. Não existe entidade de usuário visitante, categoria de inventário ou estoque neste domínio. O vínculo transacional é o evento de telemetria com data, tipo, caminho e metadados minimizados.
+
 ## Persistência implementada
 
 A tabela `portfolio_events` é criada pelo SQLAlchemy no startup. SQLite local fica em `services/api/.data/nexo.sqlite3`; produção exige PostgreSQL persistente.
