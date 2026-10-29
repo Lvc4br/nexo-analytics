@@ -10,6 +10,10 @@
 - Origin e ID do site são controles complementares, não segredos nem autenticação forte.
 - Produção exige SESSION_SECRET forte e PostgreSQL persistente.
 
+## Cobertura automatizada relevante
+
+A suíte de API cobre autenticação ausente/inválida, origem e site não autorizados, deduplicação, limite de coleta, validação do payload e separação entre métricas Nexo/Vercel. Esses testes não substituem teste de penetração, rate limiting distribuído nem validação da infraestrutura publicada.
+
 ## Antes de produção
 
 - Configure rate limiting compartilhado no proxy/gateway. O limite atual é local ao processo e não protege sozinho um deployment serverless distribuído.
