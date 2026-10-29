@@ -77,6 +77,10 @@ O SDK está em `packages/tracker-sdk/src/index.js`; o portfólio mantém um adap
 
 Guia: [docs/INTEGRATION_TRACKER.md](docs/INTEGRATION_TRACKER.md).
 
+## Verificação automatizada
+
+O workflow `.github/workflows/ci.yml` tenta compilar o dashboard e executar os testes da API em pushes e pull requests. O resultado só estará confirmado quando o GitHub Actions concluir os jobs; não trate a criação do workflow como prova de testes aprovados.
+
 ## Critérios de produção
 
 - Persistência PostgreSQL durável e política de retenção definida.
