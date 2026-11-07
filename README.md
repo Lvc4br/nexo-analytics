@@ -1,6 +1,12 @@
 # Nexo Analytics
 
-Painel privado para consultar eventos coletados pelo portfólio e, quando configurado, métricas agregadas do Vercel Web Analytics. O projeto reúne um dashboard React/Vite, uma API Python/FastAPI e um tracker JavaScript sem dependência de framework.
+> Projeto de analytics próprio para instrumentar eventos de um site, receber e validar dados por API e consultar métricas em um dashboard administrativo.
+
+<sub>React · Vite · JavaScript · Python · FastAPI · SQLite · PostgreSQL</sub>
+
+**Integração de referência:** [LV Portfolio](https://github.com/Lvc4br/LV_Portfolio)
+
+O repositório reúne três partes: um SDK JavaScript independente de framework, uma API FastAPI para ingestão/autenticação e um painel React. **Status:** projeto em desenvolvimento e validação; a documentação descreve como preparar uma implantação, mas não afirma que exista serviço público de produção ativo. SQLite atende ao desenvolvimento local; produção requer PostgreSQL durável, configuração segura e testes no ambiente publicado.
 
 ## Arquitetura
 
